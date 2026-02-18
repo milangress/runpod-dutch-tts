@@ -86,8 +86,6 @@ export class RunPodClient {
 	async cancelJob(id: string) {
 		if (!this.activeJobs.has(id)) return
 		try {
-			// endpoint.cancel might assume { id } or just id, checking docs logic or just standard usage
-			// Usually runpod sdk endpoint.cancel takes the id string
 			await this.endpoint.cancel(id)
 			this.activeJobs.delete(id)
 			console.log(`   ⛔ Canceled job ${id} `)
