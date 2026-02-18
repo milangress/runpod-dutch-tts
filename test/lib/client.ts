@@ -110,7 +110,7 @@ export class RunPodClient {
 				if (err instanceof RunPodError) throw err
 				failures++
 				if (failures > 3) {
-					console.warn(`   ⚠️ Status check failed ${failures} times for ${id}:`, ensureError(err).message)
+					logToFile(`⚠️ Status check failed ${failures} times for ${id}: ${ensureError(err).message}`)
 				}
 				await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
 			}

@@ -17,8 +17,8 @@ export async function loadAudioPrompt(filePath: string): Promise<AudioPrompt> {
 	const bytes = await file.arrayBuffer()
 	const base64 = Buffer.from(bytes).toString("base64")
 	const sizeKB = (bytes.byteLength / 1024).toFixed(1)
-
-	console.log(`🎤 Audio prompt: ${filePath} (${sizeKB} KB)`)
+	const { logToFile } = await import("./logger")
+	logToFile(`🎤 Audio prompt: ${filePath} (${sizeKB} KB)`)
 
 	return { base64, sizeKB }
 }
@@ -60,4 +60,18 @@ export function concatenateWavBuffers(buffers: Buffer[]): Buffer {
 	header.writeUInt32LE(totalDataSize, 40)
 
 	return Buffer.concat([header, ...pcmChunks])
+}
+
+/**
+ * Calculate duration of a WAV file in seconds.
+ */
+export function getWavDuration(buffer: Buffer): number {
+	try {
+		// WAV header: byte rate is at offset 28
+		const byteRate = buffer.readUInt32LE(28)
+		const dataSize = buffer.length - 44
+		return dataSize / byteRate
+	} catch (err) {
+		return 0
+	}
 }

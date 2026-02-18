@@ -82,6 +82,8 @@ export interface TrackedItem<T = void> {
 	elapsed?: number
 	audio?: Buffer
 	format?: string
+	outputPath?: string
+	audioDuration?: number
 	context: T
 	batchIndex?: number
 	batchTotal?: number

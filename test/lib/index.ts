@@ -10,13 +10,16 @@ export * from "./errors"
 export * from "./types"
 export { runWithUI } from "./ui"
 
+import { logErrorToFile, logToFile } from "./logger"
+
 export async function runTest(fn: (client: RunPodClient) => Promise<void>) {
 	const client = new RunPodClient()
 	try {
 		await fn(client)
-		console.log("\n✅ Test completed successfully.")
+		logToFile("Test completed successfully.")
 	} catch (err: any) {
-		console.error("\n❌ Test failed:", err.message || err)
+		const msg = err.message || err
+		logErrorToFile("Test failed", msg)
 		await client.cancelAll()
 		throw err
 	}
@@ -24,7 +27,7 @@ export async function runTest(fn: (client: RunPodClient) => Promise<void>) {
 
 /**
  * Helper to write output files relative to `test/output`.
- * Automatically ensures directories exist and logs the operation.
+ * Automatically ensures directories exist and logs the operation to file.
  */
 export async function writeOutput(subpath: string, data: string | Buffer | Uint8Array) {
 	const basePath = join(import.meta.dir, "..", "output")
@@ -39,9 +42,13 @@ export async function writeOutput(subpath: string, data: string | Buffer | Uint8
 	// Write file using Bun
 	await Bun.write(file, data)
 
-	// Log result
+	// Log result to file
 	const sizeKB = (file.size / 1024).toFixed(1)
-	console.log(`   ${subpath} — ${sizeKB} KB`)
+	logToFile(`Output: ${subpath} — ${sizeKB} KB`)
 
-	return file
+	return {
+		file,
+		path: subpath,
+		sizeKB,
+	}
 }

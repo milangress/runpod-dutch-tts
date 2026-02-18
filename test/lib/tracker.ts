@@ -234,9 +234,9 @@ export async function executeAll<T>(
 
 					item.completedAt = completedAt
 					item.elapsed = completedAt - (item.startedAt ?? completedAt)
-					onStatusChange?.(item)
 
 					if (onProgress) await onProgress(item)
+					onStatusChange?.(item)
 				}
 			} catch (err: unknown) {
 				activeJobs.delete(jobId)
@@ -249,8 +249,8 @@ export async function executeAll<T>(
 					item.error = error
 					item.completedAt = completedAt
 					item.elapsed = completedAt - (item.startedAt ?? completedAt)
-					onStatusChange?.(item)
 					if (onProgress) await onProgress(item)
+					onStatusChange?.(item)
 				}
 			}
 		})

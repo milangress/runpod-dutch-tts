@@ -6,9 +6,8 @@ import type { ItemRequest, RunAllOptions, TrackedItem } from "./types"
 
 // ── Components ─────────────────────────────────────────────────────
 
-const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
+const ItemRow = ({ item, isParentFinal }: { item: TrackedItem<any>, isParentFinal: boolean }) => {
 	const status = item.status
-	const isRunning = status === "IN_PROGRESS"
 	const isCompleted = status === "COMPLETED"
 	const isFailed = status === "FAILED" || status === "TIMED_OUT"
 	const isCancelled = status === "CANCELLED" || status === "TERMINATED" || status === "LOCAL_CANCELLED"
@@ -16,41 +15,42 @@ const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
 	const statusColor =
 		isCompleted ? "green" :
 		isFailed ? "red" :
-		isRunning ? "cyan" :
 		isCancelled ? "yellow" :
-		"gray"
+		"dim"
 
-	const icon =
-		isCompleted ? "✔" :
-		isFailed ? "✖" :
-		isRunning ? <Spinner type="dots" /> :
-		isCancelled ? "⊘" :
-		"•"
-
-	const label = <Text color={statusColor} bold={isRunning}>{item.label}</Text>
+	// Sub-items don't need their own spinner/checkmark if parent is showing it
+	const label = <Text color={isParentFinal ? statusColor : "dim"}>{item.label}</Text>
 
 	// Snippet of text
 	const snippet = item.text.replace(/\s+/g, " ").slice(0, 60) + (item.text.length > 60 ? "..." : "")
 
 	return (
-		<Box flexDirection="column" marginLeft={2}>
+		<Box flexDirection="column" marginLeft={4}>
 			<Box>
-				<Text color={statusColor}>{icon} </Text>
+				<Text color="dim"> • </Text>
 				{label}
-				{isCompleted && item.audio && (
-					<Text color="dim">  → {(item.audio.length / 1024).toFixed(1)}kb</Text>
+				{isCompleted && item.audioDuration !== undefined && (
+					<Text color="cyan">  → {item.audioDuration.toFixed(1)} s</Text>
 				)}
 				{isFailed && item.error && (
 					<Text color="red">  → {item.error.message}</Text>
 				)}
-				{isCancelled && (
-					<Text color="dim">  → cancelled</Text>
-				)}
 			</Box>
+
 			{/* Show text snippet for running/finished/failed */}
 			{!isCancelled && status !== "PENDING" && status !== "SUBMITTED" && status !== "IN_QUEUE" && (
-				<Box marginLeft={2}>
-					<Text color="dim">→ "{snippet}"</Text>
+				<Box flexDirection="column" marginLeft={2}>
+					<Box>
+						<Text color="dim">→ </Text>
+						<Text color="dim">"{snippet}"</Text>
+					</Box>
+					{isCompleted && item.outputPath && (
+						<Box>
+							<Text color="dim">→ </Text>
+							<Text color="gray" italic>{item.outputPath}</Text>
+							<Text color="dim"> {(item.audio!.length / 1024).toFixed(1)}kb</Text>
+						</Box>
+					)}
 				</Box>
 			)}
 		</Box>
@@ -62,13 +62,13 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	const isFailed = items.some((i) => i.status === "FAILED" || i.status === "TIMED_OUT")
 	const isCompleted = items.every((i) => i.status === "COMPLETED")
 	const isCancelled = items.every((i) => i.status === "CANCELLED" || i.status === "TERMINATED" || i.status === "LOCAL_CANCELLED")
+	const isFinal = isFailed || isCompleted || isCancelled
 
 	const isRunning = items.some((i) => i.status === "IN_PROGRESS")
-	const isQueued = !isFailed && !isCompleted && !isCancelled && !isRunning
+	const isQueued = !isFinal && !isRunning
 
-	// Expansion logic: Only expand if IN_PROGRESS, COMPLETED, or FAILED
-	// Also expand if cancelled (to show items)
-	const showItems = isFailed || isCompleted || isCancelled || isRunning
+	// Expansion logic: Only expand if IN_PROGRESS or FINAL
+	const showItems = isFinal || isRunning
 
 	// Header Logic
 	let icon: any = "•"
@@ -76,7 +76,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	let statusText = "queued"
 
 	if (isRunning) {
-		statusText = "IN_PROGRESS"
+		statusText = "RUNNING"
 		color = "cyan"
 		icon = <Spinner type="dots" />
 	} else if (isFailed) {
@@ -88,23 +88,17 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 		icon = "✔"
 		color = "green"
 	} else if (isCancelled) {
-		statusText = "CANCELLED"
+		statusText = "STOPPED"
 		icon = "⊘"
 		color = "yellow"
 	} else if (isQueued) {
-		// Differentiate local vs remote queue
 		const uniqueStatuses = Array.from(new Set(items.map(i => i.status)))
-		if (uniqueStatuses.includes("IN_QUEUE")) {
-			statusText = "IN_QUEUE"
-			color = "magenta"
-			icon = <Spinner type="dots" />
-		} else if (uniqueStatuses.includes("SUBMITTED")) {
-			statusText = "SUBMITTED"
+		if (uniqueStatuses.includes("IN_QUEUE") || uniqueStatuses.includes("SUBMITTED")) {
+			statusText = "QUEUED"
 			color = "magenta"
 			icon = <Spinner type="dots" />
 		} else {
 			statusText = "PENDING"
-			color = "gray"
 		}
 	}
 
@@ -112,7 +106,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	const duration = elapsed > 0 ? `  ++ took ${(elapsed / 1000).toFixed(1)} s` : ""
 
 	return (
-		<Box flexDirection="column">
+		<Box flexDirection="column" marginBottom={isFinal ? 1 : 0}>
 			<Box>
 				<Text color={color}>{icon} </Text>
 				<Text bold color={color}>Batch {index + 1}/{total}</Text>
@@ -123,7 +117,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 			{showItems && (
 				<Box flexDirection="column">
 					{items.map((item, i) => (
-						<ItemRow key={i} item={item} />
+						<ItemRow key={item.id} item={item} isParentFinal={isFinal} />
 					))}
 				</Box>
 			)}

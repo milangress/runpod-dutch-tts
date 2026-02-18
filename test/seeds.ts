@@ -16,7 +16,10 @@ runTest(async (client) => {
 			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 0, top_p: 0.8, top_k: 30 },
 			onProgress: async (item) => {
 				if (item.status === "COMPLETED" && item.audio) {
-					await writeOutput(`seeds/seed_${item.context}.${item.format}`, item.audio)
+					const { getWavDuration } = await import("./lib/audio")
+					item.audioDuration = getWavDuration(item.audio)
+					const out = await writeOutput(`seeds/seed_${item.context}.${item.format}`, item.audio)
+					item.outputPath = out.path
 				}
 			},
 		}
