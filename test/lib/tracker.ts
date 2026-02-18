@@ -9,6 +9,8 @@ import type {
 	TrackedItem,
 } from "./types"
 
+import { logErrorToFile } from "./logger"
+
 const POLL_INTERVAL_MS = 2000
 const TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 
@@ -171,7 +173,7 @@ export async function executeAll<T>(
 				tracked[index]!.elapsed = Date.now() - now
 				onStatusChange?.(tracked[index]!)
 			}
-			console.error(`   ❌ Batch ${b + 1} submit failed: ${error.message}`)
+			logErrorToFile(`Batch ${b + 1} submit failed`, error.message)
 		}
 	}
 
@@ -186,7 +188,7 @@ export async function executeAll<T>(
 						tracked[index]!.runpodStatus = status
 						onStatusChange?.(tracked[index]!)
 					}
-				}, signal)
+				})
 				activeJobs.delete(jobId)
 
 				if (response.status === "CANCELLED" || response.status === "TERMINATED") {

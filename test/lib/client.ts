@@ -3,6 +3,7 @@ import { loadAudioPrompt } from "./audio"
 import { loadConfig } from "./config"
 import { printSummary } from "./display"
 import { RunPodError, ensureError } from "./errors"
+import { logErrorToFile, logToFile } from "./logger"
 import { executeAll } from "./tracker"
 import type {
 	AudioPrompt,
@@ -136,19 +137,19 @@ export class RunPodClient {
 	}
 
 	async cancelJob(id: string) {
-		console.log(`   ⛔ Canceling job ${id}...`)
+		logToFile(`Canceling job ${id}...`)
 		if (!this.activeJobs.has(id)) return
 		try {
 			await this.endpoint.cancel(id)
 			this.activeJobs.delete(id)
-			console.log(`   ⛔ Canceled job ${id}`)
+			logToFile(`Canceled job ${id}`)
 		} catch (err: unknown) {
-			console.error(`   ⚠️ Failed to cancel job ${id}:`, ensureError(err).message)
+			logErrorToFile(`Failed to cancel job ${id}`, ensureError(err).message)
 		}
 	}
 
 	async cancelAll() {
-		console.log(`   ⛔ Canceling all ${this.activeJobs.size} active jobs...`)
+		logToFile(`Canceling all ${this.activeJobs.size} active jobs...`)
 		const jobs = Array.from(this.activeJobs)
 		if (jobs.length === 0) return
 		await Promise.all(jobs.map((id) => this.cancelJob(id)))

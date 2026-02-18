@@ -215,10 +215,9 @@ export async function runWithUI<T>(
 				if (input === "c" && key.ctrl) {
 					if (!cancelling) {
 						setCancelling(true)
-						controller.abort() // Cancel new submissions and stop polling
+						controller.abort() // Stop new submissions (but executeAll allows polling to continue)
 						client.cancelAll().catch((err) => {
 							// Fire and forget cancellation cleanup
-							// setError(err)
 						})
 					} else {
 						// Force exit on second press
@@ -255,13 +254,15 @@ export async function runWithUI<T>(
 					reject(err)
 				})
 
-				return () => { mounted = false }
+				return () => {
+					mounted = false
+				}
 			}, [])
 
 			return <ProgressUI items={trackedItems} error={error} cancelling={cancelling} />
 		}
 
-		const { unmount } = render(<Wrapper />)
+		const { unmount } = render(<Wrapper />, { exitOnCtrlC: false })
 		unmountInk = unmount
 	})
 }
