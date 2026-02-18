@@ -20,6 +20,16 @@ import io
 import json
 import os
 import logging
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stdout
+)
+logger = logging.getLogger("runpod_tts")
 
 # Prevent Hugging Face from checking for updates or connecting to the Hub
 logging.getLogger("transformers").setLevel(logging.ERROR)
@@ -49,11 +59,15 @@ MODEL_ID = os.environ.get("MODEL_ID", "pevers/parkiet")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")
 
-print(f"Loading model '{MODEL_ID}' on device '{DEVICE}' ...")
-processor = AutoProcessor.from_pretrained(MODEL_ID)
-model = DiaForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE)
-SAMPLE_RATE: int = processor.feature_extractor.sampling_rate
-print(f"Model loaded successfully. Sample rate: {SAMPLE_RATE}")
+logger.info(f"Loading model '{MODEL_ID}' on device '{DEVICE}' ...")
+try:
+    processor = AutoProcessor.from_pretrained(MODEL_ID)
+    model = DiaForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE)
+    SAMPLE_RATE: int = processor.feature_extractor.sampling_rate
+    logger.info(f"Model loaded successfully. Sample rate: {SAMPLE_RATE}")
+except Exception as e:
+    logger.critical(f"Failed to load model: {e}")
+    raise e
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +169,7 @@ def _load_preset_voices() -> dict[str, PresetVoice]:
     voices: dict[str, PresetVoice] = {}
 
     if not os.path.exists(manifest_path):
-        print(f"No voices manifest found at {manifest_path}, preset voices disabled.")
+        logger.warning(f"No voices manifest found at {manifest_path}, preset voices disabled.")
         return voices
 
     with open(manifest_path) as f:
@@ -164,21 +178,24 @@ def _load_preset_voices() -> dict[str, PresetVoice]:
     for voice_id, meta in manifest.items():
         wav_path = os.path.join(VOICES_DIR, meta["file"])
         if not os.path.exists(wav_path):
-            print(f"⚠️  Voice '{voice_id}': file '{wav_path}' not found, skipping.")
+            logger.warning(f"Voice '{voice_id}': file '{wav_path}' not found, skipping.")
             continue
 
-        waveform, sr = torchaudio.load(wav_path)
-        audio = _load_waveform(waveform, sr)
+        try:
+            waveform, sr = torchaudio.load(wav_path)
+            audio = _load_waveform(waveform, sr)
 
-        voice = PresetVoice(
-            name=meta.get("name", voice_id),
-            transcript=meta.get("transcript", ""),
-            audio=audio,
-        )
-        voices[voice_id] = voice
-        print(f"   ✅ Voice '{voice_id}' ({voice.name}): {voice.duration_s:.1f}s, {len(audio)} samples")
+            voice = PresetVoice(
+                name=meta.get("name", voice_id),
+                transcript=meta.get("transcript", ""),
+                audio=audio,
+            )
+            voices[voice_id] = voice
+            logger.info(f"Loaded voice '{voice_id}' ({voice.name}): {voice.duration_s:.1f}s, {len(audio)} samples")
+        except Exception as e:
+            logger.error(f"Failed to load voice '{voice_id}': {e}")
 
-    print(f"Loaded {len(voices)} preset voice(s): {list(voices.keys())}")
+    logger.info(f"Loaded {len(voices)} preset voice(s): {list(voices.keys())}")
     return voices
 
 
@@ -277,7 +294,7 @@ def resolve_voice_cloning(params: JobParams) -> dict | None:
             return {"error": f"Unknown voice '{params.voice}'. Available: {available}"}
 
         preset = PRESET_VOICES[voice_key]
-        print(f"🎤 Using preset voice: {voice_key} ({preset.name})")
+        logger.info(f"Using preset voice: {voice_key} ({preset.name})")
         params.audio_array = preset.audio
 
         if not params.audio_prompt_transcript:
@@ -298,11 +315,7 @@ def resolve_voice_cloning(params: JobParams) -> dict | None:
     audio = params.audio_array
     duration_s = len(audio) / SAMPLE_RATE
 
-    print(f"🎤 Voice cloning mode:")
-    print(f"   Audio: {len(audio)} samples, {duration_s:.2f}s @ {SAMPLE_RATE} Hz")
-    print(f"   Audio range: [{audio.min():.4f}, {audio.max():.4f}], dtype={audio.dtype}")
-    print(f"   Transcript: {'provided (' + str(len(params.audio_prompt_transcript)) + ' chars)' if params.audio_prompt_transcript else 'MISSING'}")
-    print(f"   Batch size: {len(params.input_texts)} text(s)")
+    logger.debug(f"Voice cloning mode: {len(audio)} samples, {duration_s:.2f}s @ {SAMPLE_RATE} Hz")
 
     if len(audio) == 0:
         return {"error": "Audio prompt decoded to zero samples. Check the audio file."}
@@ -311,16 +324,13 @@ def resolve_voice_cloning(params: JobParams) -> dict | None:
         return {"error": "Audio prompt appears to be silent (all zeros). Check the audio file."}
 
     if duration_s < 3:
-        print(f"   ⚠️  WARNING: Audio prompt is very short ({duration_s:.2f}s). "
-              "Voice cloning may not work well with prompts under 3 seconds.")
+        logger.warning(f"Audio prompt is very short ({duration_s:.2f}s). Voice cloning may not work well with prompts under 3 seconds.")
 
     if duration_s > 15:
-        print(f"   ⚠️  WARNING: Audio prompt is very long ({duration_s:.2f}s). "
-              "This may cause memory issues. Consider using a 5-15 second clip.")
+        logger.warning(f"Audio prompt is very long ({duration_s:.2f}s). This may cause memory issues. Consider using a 5-15 second clip.")
 
     if not params.audio_prompt_transcript:
-        print("   ⚠️  WARNING: No transcript provided. "
-              "Voice cloning works best when the transcript matches the audio prompt.")
+        logger.warning("No transcript provided. Voice cloning works best when the transcript matches the audio prompt.")
 
     # ── Prepend transcript + clean up speaker tags ──────────────
     if params.audio_prompt_transcript:
@@ -373,10 +383,10 @@ def temporary_seed(seed: int | None):
 def log_settings(params: JobParams, audio_prompt_len: int | None) -> None:
     """Log generation settings as a JSON blob with full prompt texts."""
     mode = "voice_clone" if params.is_voice_cloning else "tts"
-    print(f"\n🔧 Generation ({mode}):")
+    logger.info(f"Generation ({mode}) started")
 
     for i, t in enumerate(params.input_texts):
-        print(f'   text[{i}]: "{t}"')
+        logger.debug(f'text[{i}]: "{t}"')
 
     settings: dict = {
         "max_new_tokens": params.max_new_tokens,
@@ -393,7 +403,8 @@ def log_settings(params: JobParams, audio_prompt_len: int | None) -> None:
         settings["audio_prompt"] = f"<{len(params.audio_prompt_b64) * 3 // 4 // 1024} KB>"
     if audio_prompt_len is not None:
         settings["audio_prompt_len"] = audio_prompt_len
-    print(f"   {json.dumps(settings)}")
+
+    logger.info(f"Settings: {json.dumps(settings)}")
 
 
 def generate_speech(params: JobParams) -> list[str] | dict:
@@ -415,7 +426,7 @@ def generate_speech(params: JobParams) -> list[str] | dict:
             return_tensors="pt",
         ).to(DEVICE)
         audio_prompt_len = processor.get_audio_prompt_len(inputs["decoder_attention_mask"])
-        print(f"   Audio prompt len (tokens): {audio_prompt_len}")
+        logger.debug(f"Audio prompt len (tokens): {audio_prompt_len}")
     else:
         inputs = processor(text=params.input_texts, padding=True, return_tensors="pt").to(DEVICE)
 
@@ -438,8 +449,10 @@ def generate_speech(params: JobParams) -> list[str] | dict:
 
         audio_list = processor.batch_decode(outputs, audio_prompt_len=audio_prompt_len)
     except torch.cuda.OutOfMemoryError:
+        logger.error("GPU out of memory")
         return {"error": "GPU out of memory. Try reducing batch size or text length."}
     except Exception as e:
+        logger.error(f"Generation failed: {e}", exc_info=True)
         return {"error": f"Generation failed: {e}"}
 
     # ── Encode to base64 ────────────────────────────────────────
@@ -474,11 +487,13 @@ def handler(job: dict) -> dict:
     # 1. Parse input
     params = parse_input(job["input"])
     if isinstance(params, dict):
+        logger.error(f"Input validation error: {params}")
         return params  # error
 
     # 2. Resolve voice cloning (if requested)
     error = resolve_voice_cloning(params)
     if error:
+        logger.error(f"Voice cloning resolution error: {error}")
         return error
 
     # 3. Generate speech
@@ -487,6 +502,7 @@ def handler(job: dict) -> dict:
         return result  # error
 
     # 4. Format response
+    logger.info(f"Generated {len(result)} audio clip(s)")
     return {"audio": result, "format": params.output_format, "count": len(result)}
 
 
