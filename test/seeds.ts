@@ -23,7 +23,7 @@ const runpod = runpodSdk(RUNPOD_API_KEY)
 const endpoint = runpod.endpoint(ENDPOINT_ID)!
 
 // ── Configuration ──────────────────────────────────────────────────
-const SEEDS = [256, 142000, 142001, 42002, 5003, 6799, 7123, 8887, 99876, 91234, 142009]
+const SEEDS = [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
 const TEXT = "[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen."
 const PARAMS = {
 	max_new_tokens: 3072,

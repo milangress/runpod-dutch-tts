@@ -33,7 +33,7 @@ const input = {
 		top_p: 0.8,
 		top_k: 30,
 		output_format: "wav",
-		seed: 256,
+		seed: 30,
 	},
 }
 
