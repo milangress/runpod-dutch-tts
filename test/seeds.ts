@@ -32,12 +32,12 @@ runTest(async (client) => {
 			try {
 				const status = await client.waitForJob(id)
 				const elapsed = ((Date.now() - start) / 1000).toFixed(1)
+
+				const audioBuffers = client.getAudio(status)
+				const audioBuffer = audioBuffers[0]
 				const output = status.output
 
-				const audioString = output?.audio?.[0]
-
-				if (audioString) {
-					const audioBuffer = Buffer.from(audioString, "base64")
+				if (audioBuffer) {
 					const filename = `seed_${seed}.${output?.format || "wav"}`
 
 					// Use helper to write output

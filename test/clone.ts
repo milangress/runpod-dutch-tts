@@ -44,18 +44,12 @@ runTest(async (client) => {
 		...PARAMS,
 	})
 
-	const output = result.output
-	if (!output) throw new Error("No output in result")
+	const audioBuffers = client.getAudio(result)
+	console.log(`\n✅ Cloning complete — ${audioBuffers.length} audio buffers`)
 
-	const audioList = output.audio || []
-	console.log(`\n✅ Cloning complete — ${audioList.length} files`)
-
-	for (let i = 0; i < audioList.length; i++) {
-		const audioBase64 = audioList[i]
-		if (!audioBase64) continue
-
-		const audioBuffer = Buffer.from(audioBase64, "base64")
-		const filename = `clone_${i}.${output.format || "wav"}`
+	for (let i = 0; i < audioBuffers.length; i++) {
+		const audioBuffer = audioBuffers[i]
+		const filename = `clone_${i}.${result.output?.format || "wav"}`
 
 		// Use helper to write output
 		await writeOutput(`clone/${filename}`, audioBuffer)

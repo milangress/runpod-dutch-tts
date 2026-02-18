@@ -5,6 +5,28 @@ import type { RunPodJobInput, RunPodStatusResponse } from "./types"
 type RunpodSdk = ReturnType<typeof runpodSdk>
 type Endpoint = NonNullable<ReturnType<RunpodSdk["endpoint"]>>
 
+// Custom Error Classes
+export class RunPodError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = "RunPodError"
+	}
+}
+
+export class JobFailedError extends RunPodError {
+	constructor(public jobId: string, message: string) {
+		super(`Job ${jobId} failed: ${message}`)
+		this.name = "JobFailedError"
+	}
+}
+
+export class JobTimeoutError extends RunPodError {
+	constructor(public jobId: string, timeoutMs: number) {
+		super(`Job ${jobId} timed out after ${timeoutMs}ms`)
+		this.name = "JobTimeoutError"
+	}
+}
+
 const TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 const POLL_INTERVAL_MS = 2000
 
@@ -16,12 +38,13 @@ export class RunPodClient {
 	constructor() {
 		const config = loadConfig()
 		this.runpod = runpodSdk(config.RUNPOD_API_KEY)
-		this.endpoint = this.runpod.endpoint(config.ENDPOINT_ID) as Endpoint
+		const endpoint = this.runpod.endpoint(config.ENDPOINT_ID)
 
-		if (!this.endpoint) {
-			console.error(`Missing endpoint for ID: ${config.ENDPOINT_ID} `)
-			process.exit(1)
+		if (!endpoint) {
+			throw new RunPodError(`Missing endpoint for ID: ${config.ENDPOINT_ID}`)
 		}
+
+		this.endpoint = endpoint as Endpoint
 
 		// Handle cancellation
 		process.on("SIGINT", async () => {
@@ -35,12 +58,12 @@ export class RunPodClient {
 		try {
 			const result = await this.endpoint.run({ input })
 			const id = result.id
-			if (!id) throw new Error("No job ID returned from RunPod")
+			if (!id) throw new RunPodError("No job ID returned from RunPod")
 			this.activeJobs.add(id)
 			return id
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : String(err)
-			throw new Error(`Failed to submit job: ${message} `)
+			const message = this.getErrorMessage(err)
+			throw new RunPodError(`Failed to submit job: ${message}`)
 		}
 	}
 
@@ -52,6 +75,11 @@ export class RunPodClient {
 			try {
 				const status = (await this.endpoint.status(id)) as RunPodStatusResponse
 
+				// Check for application-level errors in output
+				if (status.output && typeof status.output === "object" && "error" in status.output) {
+					throw new JobFailedError(id, `Application error: ${status.output.error}`)
+				}
+
 				if (status.status === "COMPLETED") {
 					this.activeJobs.delete(id)
 					return status
@@ -59,23 +87,25 @@ export class RunPodClient {
 
 				if (status.status === "FAILED") {
 					this.activeJobs.delete(id)
-					throw new Error(status.error || "Job failed without error message")
+					throw new JobFailedError(id, status.error || "Job failed without error message")
 				}
 
 				failures = 0 // Reset on success
 				await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
 			} catch (err: unknown) {
+				if (err instanceof RunPodError) throw err
+
 				failures++
 				if (failures > 3) {
-					const message = err instanceof Error ? err.message : String(err)
-					console.warn(`   ⚠️ Status check failed ${failures} times for ${id}: `, message)
+					const message = this.getErrorMessage(err)
+					console.warn(`   ⚠️ Status check failed ${failures} times for ${id}:`, message)
 				}
 				await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
 			}
 		}
 
 		await this.cancelJob(id)
-		throw new Error(`Job ${id} timed out after ${TIMEOUT_MS} ms`)
+		throw new JobTimeoutError(id, TIMEOUT_MS)
 	}
 
 	async run(input: RunPodJobInput): Promise<RunPodStatusResponse> {
@@ -83,15 +113,36 @@ export class RunPodClient {
 		return this.waitForJob(id)
 	}
 
+	/**
+	 * Extracts audio buffers from a completed job response.
+	 */
+	getAudio(response: RunPodStatusResponse): Buffer[] {
+		if (!response.output) {
+			throw new RunPodError("Response has no output")
+		}
+
+		const output = response.output
+		if (!output.audio || !Array.isArray(output.audio)) {
+			throw new RunPodError("Response output missing 'audio' array")
+		}
+
+		return output.audio.map((b64, i) => {
+			if (!b64 || typeof b64 !== "string") {
+				throw new RunPodError(`Invalid base64 string at index ${i}`)
+			}
+			return Buffer.from(b64, "base64")
+		})
+	}
+
 	async cancelJob(id: string) {
 		if (!this.activeJobs.has(id)) return
 		try {
 			await this.endpoint.cancel(id)
 			this.activeJobs.delete(id)
-			console.log(`   ⛔ Canceled job ${id} `)
+			console.log(`   ⛔ Canceled job ${id}`)
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : String(err)
-			console.error(`   ⚠️ Failed to cancel job ${id}: `, message)
+			const message = this.getErrorMessage(err)
+			console.error(`   ⚠️ Failed to cancel job ${id}:`, message)
 		}
 	}
 
@@ -99,5 +150,10 @@ export class RunPodClient {
 		const jobs = Array.from(this.activeJobs)
 		if (jobs.length === 0) return
 		await Promise.all(jobs.map((id) => this.cancelJob(id)))
+	}
+
+	private getErrorMessage(err: unknown): string {
+		if (err instanceof Error) return err.message
+		return String(err)
 	}
 }

@@ -17,22 +17,14 @@ runTest(async (client) => {
 	console.log(`   Text: "${input.texts[0]}"`)
 
 	const result = await client.run(input)
-	const output = result.output
+	const audioBuffers = client.getAudio(result)
+	const audioBuffer = audioBuffers[0]
 
-	if (!output) throw new Error("No output in result")
-
-	if (!output.audio || output.audio.length === 0) {
-		throw new Error("No audio in response")
-	}
-
-	const audioString = output.audio[0]
-	if (!audioString) throw new Error("Audio content missing")
-
-	const audioBuffer = Buffer.from(audioString, "base64")
-	const filename = `tts_${Date.now()}.${output.format || "wav"}`
+	const format = result.output?.format || "wav"
+	const filename = `tts_${Date.now()}.${format}`
 
 	// Write output using helper
 	await writeOutput(filename, audioBuffer)
 
-	console.log(`✅ Audio saved. Format: ${output.format}`)
+	console.log(`✅ Audio saved. Format: ${format}`)
 })
