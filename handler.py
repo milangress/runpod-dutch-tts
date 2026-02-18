@@ -12,6 +12,7 @@ Supports both single-text and batch requests:
 import base64
 import io
 import os
+import re
 import random
 import tempfile
 
@@ -193,9 +194,12 @@ def handler(job):
         if np.abs(audio_array).max() < 1e-6:
             return {"error": "Audio prompt appears to be silent (all zeros). Check the audio file."}
 
-        # Voice cloning mode: prepend transcript to each text
+        # Voice cloning mode: prepend transcript to each text, strip duplicate speaker tags
         if audio_prompt_transcript:
-            input_texts = [audio_prompt_transcript + " " + t for t in input_texts]
+            input_texts = [
+                re.sub(r'(\[S\d+\])\s*\1', r'\1', audio_prompt_transcript + " " + t)
+                for t in input_texts
+            ]
 
         # Processor expects one audio sample per text — duplicate for batch
         audio_batch = [audio_array] * len(input_texts) if len(input_texts) > 1 else audio_array
