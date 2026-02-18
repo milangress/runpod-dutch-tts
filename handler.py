@@ -4,9 +4,9 @@ RunPod Serverless Handler for Parkiet — Dutch Text-to-Speech (TTS)
 Loads the pevers/parkiet model (1.6B param Dia-based architecture) at startup
 and serves TTS requests via the RunPod serverless framework.
 
-Supports both single-text and batch requests:
-  - Single: { "text": "..." }         → { "audio": "<b64>", "format": "wav" }
-  - Batch:  { "texts": ["...", ...] }  → { "audio": ["<b64>", ...], "format": "wav" }
+Supports batched text requests:
+  - Input:  { "texts": ["...", ...] }
+  - Output: { "audio": ["<b64>", ...], "format": "wav", "count": N }
 
 Voice cloning via preset voices or custom audio prompts:
   - Preset: { "text": "...", "voice": "F1" }
@@ -191,7 +191,6 @@ PRESET_VOICES = _load_preset_voices()
 class JobParams:
     """Parsed and validated job parameters."""
     input_texts: list[str]
-    is_batch: bool
     max_new_tokens: int = 3072
     guidance_scale: float = 3.0
     temperature: float = 1.8
@@ -217,16 +216,12 @@ def parse_input(job_input: dict) -> JobParams | dict:
     Returns an error dict if validation fails.
     """
     texts = job_input.get("texts")
-    text = job_input.get("text")
 
     if texts and isinstance(texts, list):
-        is_batch = True
         input_texts = texts
-    elif text:
-        is_batch = False
-        input_texts = [text]
     else:
-        return {"error": "Missing required field 'text' (string) or 'texts' (list of strings)."}
+        return {"error": "Missing required field 'texts' (list of strings)."}
+
 
     # Ensure every text starts with a speaker tag
     input_texts = [ensure_speaker_tag(t) for t in input_texts]
@@ -250,7 +245,6 @@ def parse_input(job_input: dict) -> JobParams | dict:
 
     return JobParams(
         input_texts=input_texts,
-        is_batch=is_batch,
         max_new_tokens=max_new_tokens,
         guidance_scale=guidance_scale,
         temperature=temperature,
@@ -377,7 +371,7 @@ def temporary_seed(seed: int | None):
 def log_settings(params: JobParams, audio_prompt_len: int | None) -> None:
     """Log generation settings as a JSON blob with full prompt texts."""
     mode = "voice_clone" if params.is_voice_cloning else "tts"
-    print(f"\n🔧 Generation ({mode}, {'batch' if params.is_batch else 'single'}):")
+    print(f"\n🔧 Generation ({mode}):")
 
     for i, t in enumerate(params.input_texts):
         print(f'   text[{i}]: "{t}"')
@@ -458,8 +452,8 @@ def handler(job: dict) -> dict:
     """
     RunPod handler entry point.
 
-    Input schema (single):
-        text            (str, required)  — Text to synthesise. Use [S1], [S2] for speakers.
+    Input schema:
+        texts           (list[str])      — List of texts to synthesise.
         max_new_tokens  (int, 3072)      — Maximum audio tokens.
         guidance_scale  (float, 3.0)     — Classifier-free guidance scale.
         temperature     (float, 1.8)     — Sampling temperature.
@@ -473,11 +467,7 @@ def handler(job: dict) -> dict:
         audio_prompt              (str)  — Base64-encoded audio to clone from.
         audio_prompt_transcript   (str)  — Transcript of the audio prompt.
 
-    Input schema (batch):
-        texts           (list[str])      — Multiple texts in one request.
-
-    Returns (single): { "audio": "<b64>", "format": "wav" }
-    Returns (batch):  { "audio": ["<b64>", ...], "format": "wav", "count": N }
+    Returns: { "audio": ["<b64>", ...], "format": "wav", "count": N }
     """
     # 1. Parse input
     params = parse_input(job["input"])
@@ -495,10 +485,7 @@ def handler(job: dict) -> dict:
         return result  # error
 
     # 4. Format response
-    if params.is_batch:
-        return {"audio": result, "format": params.output_format, "count": len(result)}
-    else:
-        return {"audio": result[0], "format": params.output_format}
+    return {"audio": result, "format": params.output_format, "count": len(result)}
 
 
 runpod.serverless.start({"handler": handler})
