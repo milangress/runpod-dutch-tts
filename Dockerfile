@@ -9,7 +9,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends libsndfile1 ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install PyTorch with CUDA 11.8 support (must use PyTorch index, not PyPI)
+RUN uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118 --no-cache-dir --system
+
+# Install remaining Python dependencies
 COPY requirements.txt /requirements.txt
 RUN uv pip install --upgrade -r /requirements.txt --no-cache-dir --system
 

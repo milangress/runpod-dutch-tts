@@ -2,8 +2,8 @@
 runpod~=1.7.9
 
 # Model inference (HF Transformers)
+# NOTE: torch is installed separately in Dockerfile with CUDA index
 transformers>=4.56.2
-torch>=2.0.0
 huggingface-hub>=0.30.2
 
 # Audio I/O
@@ -11,4 +11,4 @@ soundfile>=0.13.1
 descript-audio-codec>=1.0.0
 
 # Numerical
-numpy>=2.0.0
+numpy>=1.24.0
