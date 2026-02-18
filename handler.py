@@ -333,8 +333,23 @@ def resolve_voice_cloning(params: JobParams) -> dict | None:
 # Generation
 # ---------------------------------------------------------------------------
 
-def set_seed(seed: int) -> None:
-    """Set all random seeds for reproducible generation."""
+from contextlib import contextmanager
+
+@contextmanager
+def temporary_seed(seed: int | None):
+    """
+    Context manager to temporarily set random seeds and deterministic flags.
+    Restores valid global state (for cudnn flags) after the block.
+    """
+    if seed is None:
+        yield
+        return
+
+    # 1. Capture previous state
+    prev_deterministic = torch.backends.cudnn.deterministic
+    prev_benchmark = torch.backends.cudnn.benchmark
+
+    # 2. Set new state
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -343,6 +358,13 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+    try:
+        yield
+    finally:
+        # 3. Restore previous state
+        torch.backends.cudnn.deterministic = prev_deterministic
+        torch.backends.cudnn.benchmark = prev_benchmark
 
 
 def log_settings(params: JobParams, audio_prompt_len: int | None) -> None:
@@ -376,10 +398,6 @@ def generate_speech(params: JobParams) -> list[str] | dict:
     Run the TTS/voice-cloning pipeline and return a list of base64-encoded
     audio strings, or an error dict.
     """
-    # ── Seed ────────────────────────────────────────────────────
-    if params.seed is not None:
-        set_seed(int(params.seed))
-
     # ── Prepare processor inputs ────────────────────────────────
     audio_prompt_len = None
 
@@ -411,8 +429,9 @@ def generate_speech(params: JobParams) -> list[str] | dict:
     }
 
     try:
-        with torch.no_grad():
-            outputs = model.generate(**inputs, **generate_kwargs)
+        with temporary_seed(params.seed):
+            with torch.no_grad():
+                outputs = model.generate(**inputs, **generate_kwargs)
 
         audio_list = processor.batch_decode(outputs, audio_prompt_len=audio_prompt_len)
     except torch.cuda.OutOfMemoryError:
