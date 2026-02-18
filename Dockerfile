@@ -10,7 +10,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install PyTorch with CUDA 11.8 support (must use PyTorch index, not PyPI)
-RUN uv pip install torch --index-url https://download.pytorch.org/whl/cu118 --no-cache-dir --system
+RUN uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118 --no-cache-dir --system
 
 # Remove packages pulled in by torch that aren't needed for single-GPU inference (~800MB)
 RUN uv pip uninstall triton nvidia-nccl-cu11 nvidia-nvtx-cu11 --system 2>/dev/null; true
