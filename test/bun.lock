@@ -5,10 +5,11 @@
     "": {
       "name": "runpod-dutch-tts-test",
       "dependencies": {
-        "runpod-sdk": "latest",
+        "runpod-sdk": "^1.1.2",
+        "zod": "^4.3.6",
       },
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "^1.3.9",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -35,5 +36,7 @@
     "undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "xior": ["xior@0.1.4", "", { "dependencies": { "tiny-lru": "^11.2.5", "ts-deepmerge": "^7.0.0" } }, "sha512-vigS5TEZEmM76FeE/tmIhp0MX9dHOdysxMTKtWgzjbuPK5Hmgi+zwgiI6xVShMkQqPf6mpXIcywYidOJwmksaw=="],
+
+    "zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
   }
 }
