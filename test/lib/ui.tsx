@@ -7,21 +7,27 @@ import type { ItemRequest, RunAllOptions, TrackedItem } from "./types"
 // ── Components ─────────────────────────────────────────────────────
 
 const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
+	const status = item.status
+	const isRunning = status === "IN_PROGRESS"
+	const isCompleted = status === "COMPLETED"
+	const isFailed = status === "FAILED" || status === "TIMED_OUT"
+	const isCancelled = status === "CANCELLED" || status === "TERMINATED" || status === "LOCAL_CANCELLED"
+
 	const statusColor =
-		item.status === "completed" ? "green" :
-		item.status === "failed" ? "red" :
-		item.status === "running" ? "cyan" :
-		item.status === "cancelled" ? "yellow" :
+		isCompleted ? "green" :
+		isFailed ? "red" :
+		isRunning ? "cyan" :
+		isCancelled ? "yellow" :
 		"gray"
 
 	const icon =
-		item.status === "completed" ? "✔" :
-		item.status === "failed" ? "✖" :
-		item.status === "running" ? <Spinner type="dots" /> :
-		item.status === "cancelled" ? "⊘" :
+		isCompleted ? "✔" :
+		isFailed ? "✖" :
+		isRunning ? <Spinner type="dots" /> :
+		isCancelled ? "⊘" :
 		"•"
 
-	const label = <Text color={statusColor} bold={item.status === "running"}>{item.label}</Text>
+	const label = <Text color={statusColor} bold={isRunning}>{item.label}</Text>
 
 	// Snippet of text
 	const snippet = item.text.replace(/\s+/g, " ").slice(0, 60) + (item.text.length > 60 ? "..." : "")
@@ -31,18 +37,18 @@ const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
 			<Box>
 				<Text color={statusColor}>{icon} </Text>
 				{label}
-				{item.status === "completed" && item.audio && (
+				{isCompleted && item.audio && (
 					<Text color="dim">  → {(item.audio.length / 1024).toFixed(1)}kb</Text>
 				)}
-				{item.status === "failed" && item.error && (
+				{isFailed && item.error && (
 					<Text color="red">  → {item.error.message}</Text>
 				)}
-				{item.status === "cancelled" && (
+				{isCancelled && (
 					<Text color="dim">  → cancelled</Text>
 				)}
 			</Box>
 			{/* Show text snippet for running/finished/failed */}
-			{item.status !== "queued" && item.status !== "cancelled" && (
+			{!isCancelled && status !== "PENDING" && status !== "SUBMITTED" && status !== "IN_QUEUE" && (
 				<Box marginLeft={2}>
 					<Text color="dim">→ "{snippet}"</Text>
 				</Box>
@@ -52,52 +58,54 @@ const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
 }
 
 const BatchGroup = ({ index, total, items }: { index: number, total: number, items: TrackedItem<any>[] }) => {
-	const isFailed = items.some((i) => i.status === "failed")
-	const isCompleted = items.every((i) => i.status === "completed")
-	const isQueued = items.every((i) => i.status === "queued")
-	const isCancelled = items.every((i) => i.status === "cancelled")
+	// Status checks
+	const isFailed = items.some((i) => i.status === "FAILED" || i.status === "TIMED_OUT")
+	const isCompleted = items.every((i) => i.status === "COMPLETED")
+	const isCancelled = items.every((i) => i.status === "CANCELLED" || i.status === "TERMINATED" || i.status === "LOCAL_CANCELLED")
 
-	// Check if this batch is effectively running (submitted to RunPod)
-	const isSubmitted = items.some((i) => i.status === "running")
-	const isRunning = isSubmitted && !isFailed && !isCompleted && !isCancelled
-
-	// Determine specific RunPod status (shared by items in batch)
-	const rawStatus = isRunning ? items.find((i) => i.runpodStatus)?.runpodStatus : undefined
+	const isRunning = items.some((i) => i.status === "IN_PROGRESS")
+	const isQueued = !isFailed && !isCompleted && !isCancelled && !isRunning
 
 	// Expansion logic: Only expand if IN_PROGRESS, COMPLETED, or FAILED
-	const showItems = isFailed || isCompleted || isCancelled || (isRunning && rawStatus === "IN_PROGRESS")
+	// Also expand if cancelled (to show items)
+	const showItems = isFailed || isCompleted || isCancelled || isRunning
 
 	// Header Logic
 	let icon: any = "•"
 	let color = "gray"
-	let statusText = isQueued ? "queued" : isCompleted ? "done" : isFailed ? "failed" : isCancelled ? "cancelled" : "queued"
+	let statusText = "queued"
 
 	if (isRunning) {
-		// If we have a raw status, use it
-		if (rawStatus) {
-			statusText = rawStatus
-			if (rawStatus === "IN_QUEUE") {
-				color = "magenta"
-				icon = <Spinner type="dots" />
-			} else if (rawStatus === "IN_PROGRESS") {
-				color = "cyan"
-				icon = <Spinner type="dots" />
-			}
-		} else {
-			// Submitted but no poll result yet
-			statusText = "queued"
-			color = "magenta"
-			icon = <Spinner type="dots" />
-		}
+		statusText = "IN_PROGRESS"
+		color = "cyan"
+		icon = <Spinner type="dots" />
 	} else if (isFailed) {
+		statusText = "FAILED"
 		icon = "✖"
 		color = "red"
 	} else if (isCompleted) {
+		statusText = "DONE"
 		icon = "✔"
 		color = "green"
 	} else if (isCancelled) {
+		statusText = "CANCELLED"
 		icon = "⊘"
 		color = "yellow"
+	} else if (isQueued) {
+		// Differentiate local vs remote queue
+		const uniqueStatuses = Array.from(new Set(items.map(i => i.status)))
+		if (uniqueStatuses.includes("IN_QUEUE")) {
+			statusText = "IN_QUEUE"
+			color = "magenta"
+			icon = <Spinner type="dots" />
+		} else if (uniqueStatuses.includes("SUBMITTED")) {
+			statusText = "SUBMITTED"
+			color = "magenta"
+			icon = <Spinner type="dots" />
+		} else {
+			statusText = "PENDING"
+			color = "gray"
+		}
 	}
 
 	const elapsed = items.reduce((max, i) => Math.max(max, i.elapsed || 0), 0)
@@ -137,13 +145,17 @@ const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], e
 	const totalBatches = items.length > 0 ? (items[0]?.batchTotal ?? sortedBatches.length) : 0
 
 	// Logic for Static vs Dynamic
-	// We want to move COMPLETED/FAILED/CANCELLED batches to Static, BUT only if they are sequential from the start.
-	// This ensures we don't have gaps in the log.
-
 	let lastDoneIndex = -1
 	for (let i = 0; i < sortedBatches.length; i++) {
-		const [idx, batchItems] = sortedBatches[i]!
-		const isDone = batchItems.every(item => item.status === "completed" || item.status === "failed" || item.status === "cancelled")
+		const [_, batchItems] = sortedBatches[i]!
+		// Batch is done if all items are final
+		const isDone = batchItems.every(item =>
+			item.status === "COMPLETED" ||
+			item.status === "FAILED" ||
+			item.status === "CANCELLED" ||
+			item.status === "TERMINATED" ||
+			item.status === "LOCAL_CANCELLED"
+		)
 		if (isDone) {
 			lastDoneIndex = i
 		} else {
@@ -155,8 +167,8 @@ const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], e
 	const activeBatches = sortedBatches.slice(lastDoneIndex + 1)
 
 	// Stats
-	const completed = items.filter(i => i.status === "completed").length
-	const failed = items.filter(i => i.status === "failed").length
+	const completed = items.filter(i => i.status === "COMPLETED").length
+	const failed = items.filter(i => i.status === "FAILED").length
 	const total = items.length
 
 	return (

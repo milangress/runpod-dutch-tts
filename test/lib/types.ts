@@ -74,35 +74,31 @@ export interface ItemRequest<T = void> {
 
 /** What the user gets back — one per text prompt, fully resolved */
 export interface TrackedItem<T = void> {
-	/** The input text */
-	text: string
-	/** Human-readable label */
 	label: string
-	/** User-attached context */
-	context: T
-	/** Current status of the item */
-	status: "queued" | "running" | "completed" | "failed" | "cancelled"
-	/** Decoded audio buffer (set on completion) */
-	audio?: Buffer
-	/** Audio format (e.g. "wav") */
-	format: string
-	/** Timestamp when the job was submitted */
-	startedAt: number
-	/** Timestamp when the job completed/failed */
-	completedAt?: number
-	/** Duration in ms */
-	elapsed?: number
-	/** Error if failed */
+	status: TrackedItemStatus
+	text: string
 	error?: Error
-
-	/** The batch index this item belongs to (0-based) */
+	elapsed?: number
+	audio?: Buffer
+	format?: string
+	context: T
 	batchIndex?: number
-	/** Total number of batches */
 	batchTotal?: number
-
-	/** Raw status from RunPod (e.g. "IN_QUEUE", "IN_PROGRESS", "COMPLETED") */
-	runpodStatus?: string
+	completedAt?: number
+	startedAt?: number
 }
+
+export type TrackedItemStatus =
+	| "PENDING" // Local: In queue, not submitted
+	| "SUBMITTED" // Local: Request sent, waiting for ID
+	| "IN_QUEUE" // RunPod: Queued on server
+	| "IN_PROGRESS" // RunPod: Processing
+	| "COMPLETED" // RunPod: Done
+	| "FAILED" // RunPod: Error
+	| "CANCELLED" // RunPod: Cancelled
+	| "TERMINATED" // RunPod: Terminated
+	| "TIMED_OUT" // RunPod: Timed out
+	| "LOCAL_CANCELLED" // Local: Cancelled before submission
 
 /** Options for client.runAll() */
 export interface RunAllOptions<T = void> {
