@@ -26,14 +26,14 @@ const endpoint = runpod.endpoint(ENDPOINT_ID)
 
 const input = {
 	input: {
-		text: "[S1] hallo, hoe gaat het met je vandaag? [S2] het gaat goed, dankjewel. en met jou? [S1] ook goed, dankjewel voor het vragen.",
+		text: "[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen.",
 		max_new_tokens: 3072,
 		guidance_scale: 3.0,
 		temperature: 0, // makes it (together with seed) deterministic
 		top_p: 0.8,
 		top_k: 30,
 		output_format: "wav",
-		seed: 142000,
+		seed: 256,
 	},
 }
 
