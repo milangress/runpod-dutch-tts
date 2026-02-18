@@ -54,7 +54,9 @@ runTest(async (client) => {
 	console.log(`\n✅ Cloning complete — ${audioList.length} files`)
 
 	for (let i = 0; i < audioList.length; i++) {
-		const audioBuffer = Buffer.from(audioList[i], "base64")
+		const audioBase64 = audioList[i]
+		if (!audioBase64) continue
+		const audioBuffer = Buffer.from(audioBase64, "base64")
 		const filename = `clone_${i}.${output.format || "wav"}`
 		await writeFile(join(outDir, filename), audioBuffer)
 		console.log(`   ${filename} — ${(audioBuffer.byteLength / 1024).toFixed(1)} KB`)

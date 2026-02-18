@@ -40,7 +40,9 @@ runTest(async (client) => {
 	console.log(`\n✅ Batch complete — ${audioList.length} audio files`)
 
 	for (let i = 0; i < audioList.length; i++) {
-		const audioBuffer = Buffer.from(audioList[i], "base64")
+		const audioBase64 = audioList[i]
+		if (!audioBase64) continue
+		const audioBuffer = Buffer.from(audioBase64, "base64")
 		const filename = `batch_${i}.${output.format || "wav"}`
 		await writeFile(join(outDir, filename), audioBuffer)
 		const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)

@@ -30,7 +30,9 @@ runTest(async (client) => {
 		throw new Error("No audio in response")
 	}
 
-	const audioBuffer = Buffer.from(output.audio[0], "base64")
+	const audioString = output.audio[0]
+	if (!audioString) throw new Error("Audio content missing")
+	const audioBuffer = Buffer.from(audioString, "base64")
 	const filename = `tts_${Date.now()}.${output.format || "wav"}`
 	const filepath = join(outDir, filename)
 
