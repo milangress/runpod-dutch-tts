@@ -67,14 +67,20 @@ def load_audio_from_b64(b64_audio: str) -> np.ndarray:
     """Decode a base64 audio string to a numpy array at the model's sample rate."""
     audio_bytes = base64.b64decode(b64_audio)
 
-    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as f:
-        f.write(audio_bytes)
-        tmp_path = f.name
+    # Create temp file without keeping it open, so torchaudio can open it safely
+    f = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
+    tmp_path = f.name
+
     try:
+        f.write(audio_bytes)
+        f.flush()
+        f.close()
+
         waveform, sr = torchaudio.load(tmp_path)
         return _load_waveform(waveform, sr)
     finally:
-        os.remove(tmp_path)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def tensor_to_base64(audio_tensor: torch.Tensor, sample_rate: int, fmt: str = "wav") -> str:
@@ -218,15 +224,32 @@ def parse_input(job_input: dict) -> JobParams | dict:
     # Ensure every text starts with a speaker tag
     input_texts = [ensure_speaker_tag(t) for t in input_texts]
 
+    # Validate numeric inputs
+    try:
+        max_new_tokens = int(job_input.get("max_new_tokens", 3072))
+        guidance_scale = float(job_input.get("guidance_scale", 3.0))
+        temperature = float(job_input.get("temperature", 1.8))
+        top_p = float(job_input.get("top_p", 0.90))
+        top_k = int(job_input.get("top_k", 50))
+    except (ValueError, TypeError) as e:
+        return {"error": f"Invalid numeric parameter: {e}. Check max_new_tokens, guidance_scale, temperature, top_p, top_k."}
+
+    seed = job_input.get("seed")
+    if seed is not None:
+        try:
+            seed = int(seed)
+        except (ValueError, TypeError):
+             return {"error": f"Invalid seed value '{seed}': must be an integer."}
+
     return JobParams(
         input_texts=input_texts,
         is_batch=is_batch,
-        max_new_tokens=int(job_input.get("max_new_tokens", 3072)),
-        guidance_scale=float(job_input.get("guidance_scale", 3.0)),
-        temperature=float(job_input.get("temperature", 1.8)),
-        top_p=float(job_input.get("top_p", 0.90)),
-        top_k=int(job_input.get("top_k", 50)),
-        seed=job_input.get("seed"),
+        max_new_tokens=max_new_tokens,
+        guidance_scale=guidance_scale,
+        temperature=temperature,
+        top_p=top_p,
+        top_k=top_k,
+        seed=seed,
         output_format=job_input.get("output_format", "wav").lower(),
         voice=job_input.get("voice"),
         audio_prompt_b64=job_input.get("audio_prompt"),
