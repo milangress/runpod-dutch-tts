@@ -22,7 +22,6 @@ import os
 import logging
 
 # Prevent Hugging Face from checking for updates or connecting to the Hub
-os.environ["HF_HUB_OFFLINE"] = "1"
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
