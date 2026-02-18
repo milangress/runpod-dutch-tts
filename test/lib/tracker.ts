@@ -26,6 +26,13 @@ interface Batch<T> {
  */
 function batchKey<T>(item: ItemRequest<T>, baseParams?: Partial<GenerationParams>): string {
 	const merged = { ...baseParams, ...item.params }
+	const ap = item.audioPrompt
+		? `yes_${item.audioPrompt.length}_${item.audioPrompt.slice(-16)}`
+		: "no"
+	const apt = item.audioPromptTranscript
+		? encodeURIComponent(item.audioPromptTranscript)
+		: "none"
+
 	const parts: string[] = [
 		`seed:${merged.seed ?? "none"}`,
 		`temp:${merged.temperature}`,
@@ -34,8 +41,8 @@ function batchKey<T>(item: ItemRequest<T>, baseParams?: Partial<GenerationParams
 		`guidance:${merged.guidance_scale}`,
 		`tokens:${merged.max_new_tokens}`,
 		`fmt:${merged.output_format}`,
-		`ap:${item.audioPrompt ? "yes" : "no"}`,
-		`apt:${item.audioPromptTranscript ?? "none"}`,
+		`ap:${ap}`,
+		`apt:${apt}`,
 	]
 	return parts.join("|")
 }
@@ -114,6 +121,7 @@ export async function executeAll<T>(
 	batches.forEach((batch, batchIdx) => {
 		batch.items.forEach(({ index, request }) => {
 			tracked[index] = {
+				id: `${batchIdx}-${index}`,
 				text: request.text,
 				label: request.label,
 				context: request.context as T,
@@ -146,7 +154,7 @@ export async function executeAll<T>(
 		}
 		try {
 			const result = await endpoint.run({ input: batch.jobInput })
-			const jobId = result.id!
+			const jobId = result.id
 
 			if (!jobId) throw new RunPodError("No job ID returned from RunPod")
 			activeJobs.add(jobId)

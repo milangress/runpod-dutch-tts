@@ -1,7 +1,7 @@
 import { runTest, runWithUI, writeOutput } from "./lib"
 
 const TEXTS = [
-	"[S1] Ik ga volgende week op vakantie naar Italië. Ik heb er echt zin in, vooral in het lekkere eten en de mooie steden. Heb jij nog tips for leuke plekken?",
+	"[S1] Ik ga volgende week op vakantie naar Italië. Ik heb er echt zin in, vooral in het lekkere eten en de mooie steden. Heb jij nog tips voor leuke plekken?",
 	"[S1] Gisteren heb ik een nieuw pasta recept geprobeerd. Het was verrassend lekker, met veel verse kruiden en geroosterde groenten. Ik zal het recept later met je delen.",
 	"[S1] Heb je dat nieuwe boek al gelezen waar iedereen het over heeft? Ik ben er gisteren in begonnen en kon het bijna niet wegleggen. Het verhaal is zo spannend!",
 	"[S1] Mijn computer is de laatste tijd zo traag. Ik denk dat het tijd wordt voor een nieuwe, of misschien moet ik hem gewoon even opschonen. Heb jij verstand van computers?",
@@ -27,7 +27,7 @@ runTest(async (client) => {
 		{
 			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 0, top_p: 0.8, top_k: 30, seed: 30 },
 			onProgress: async (item) => {
-				if (item.status === "completed" && item.audio) {
+				if (item.status === "COMPLETED" && item.audio) {
 					await writeOutput(`batch/batch_${item.context}.${item.format}`, item.audio)
 				}
 			},

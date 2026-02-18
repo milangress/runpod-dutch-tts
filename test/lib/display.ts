@@ -45,22 +45,28 @@ export function printSummary<T>(
 	console.log(sep)
 
 	// Stats
-	const ok = items.filter((i) => i.status === "completed").length
-	const failed = items.filter((i) => i.status === "failed").length
+	const ok = items.filter((i) => i.status === "COMPLETED").length
+	const failed = items.filter((i) => i.status === "FAILED").length
 	const elapsed = items
 		.filter((i) => i.elapsed)
 		.map((i) => i.elapsed!)
 
-	const totalTime = elapsed.length > 0 ? Math.max(...elapsed) : 0
-	console.log(`\n   ✅ ${ok} completed, ❌ ${failed} failed, ⏱️  ${(totalTime / 1000).toFixed(1)}s total`)
+	const maxElapsed = elapsed.length > 0 ? Math.max(...elapsed) : 0
+	console.log(`\n   ✅ ${ok} completed, ❌ ${failed} failed, ⏱️  ${(maxElapsed / 1000).toFixed(1)}s max`)
 }
 
 function statusIcon(status: string): string {
 	switch (status) {
-		case "completed": return "✅"
-		case "failed": return "❌"
-		case "running": return "⏳"
-		case "queued": return "📋"
+		case "COMPLETED": return "✅"
+		case "FAILED":
+		case "TIMED_OUT": return "❌"
+		case "IN_PROGRESS": return "⏳"
+		case "PENDING":
+		case "SUBMITTED":
+		case "IN_QUEUE": return "📋"
+		case "CANCELLED":
+		case "TERMINATED":
+		case "LOCAL_CANCELLED": return "⊘"
 		default: return "❓"
 	}
 }

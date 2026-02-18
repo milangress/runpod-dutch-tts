@@ -229,7 +229,7 @@ export async function runWithUI<T>(
 						setCancelling(true)
 						controller.abort() // Stop new submissions (but executeAll allows polling to continue)
 						client.cancelAll().catch((err) => {
-							// Fire and forget cancellation cleanup
+							console.error("Failed to cancel all jobs:", err)
 						})
 					} else {
 						// Force exit on second press
@@ -250,7 +250,7 @@ export async function runWithUI<T>(
 					},
 					onStatusChange: (item) => {
 						if (!mounted) return
-						setTrackedItems((prev) => [...prev])
+						setTrackedItems((prev) => prev.map(t => t.id === item.id ? item : t))
 					},
 				}).then((final) => {
 					if (!mounted) return

@@ -189,11 +189,16 @@ def _load_preset_voices() -> dict[str, PresetVoice]:
         logger.warning(f"No voices manifest found at {manifest_path}, preset voices disabled.")
         return voices
 
-    with open(manifest_path) as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
     for voice_id, meta in manifest.items():
-        wav_path = os.path.join(VOICES_DIR, meta["file"])
+        filename = meta.get("file")
+        if not isinstance(filename, str):
+            logger.warning(f"Voice '{voice_id}': missing or invalid 'file' entry in manifest, skipping.")
+            continue
+
+        wav_path = os.path.join(VOICES_DIR, filename)
         if not os.path.exists(wav_path):
             logger.warning(f"Voice '{voice_id}': file '{wav_path}' not found, skipping.")
             continue
@@ -275,7 +280,7 @@ def parse_input(job_input: dict) -> JobParams:
         try:
             seed = int(seed)
         except (ValueError, TypeError):
-             raise AppError("INVALID_INPUT", f"Invalid seed value '{seed}': must be an integer.")
+            raise AppError("INVALID_INPUT", f"Invalid seed value '{seed}': must be an integer.")
 
     return JobParams(
         input_texts=input_texts,

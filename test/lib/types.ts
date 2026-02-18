@@ -74,6 +74,7 @@ export interface ItemRequest<T = void> {
 
 /** What the user gets back — one per text prompt, fully resolved */
 export interface TrackedItem<T = void> {
+	id: string
 	label: string
 	status: TrackedItemStatus
 	text: string
