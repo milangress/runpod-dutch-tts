@@ -1,31 +1,10 @@
 import runpodSdk from "runpod-sdk"
 import { loadConfig } from "./config"
+import { JobFailedError, JobTimeoutError, RunPodError, ensureError } from "./errors"
 import type { RunPodJobInput, RunPodStatusResponse } from "./types"
 
 type RunpodSdk = ReturnType<typeof runpodSdk>
 type Endpoint = NonNullable<ReturnType<RunpodSdk["endpoint"]>>
-
-// Custom Error Classes
-export class RunPodError extends Error {
-	constructor(message: string) {
-		super(message)
-		this.name = "RunPodError"
-	}
-}
-
-export class JobFailedError extends RunPodError {
-	constructor(public jobId: string, message: string) {
-		super(`Job ${jobId} failed: ${message}`)
-		this.name = "JobFailedError"
-	}
-}
-
-export class JobTimeoutError extends RunPodError {
-	constructor(public jobId: string, timeoutMs: number) {
-		super(`Job ${jobId} timed out after ${timeoutMs}ms`)
-		this.name = "JobTimeoutError"
-	}
-}
 
 const TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 const POLL_INTERVAL_MS = 2000
@@ -62,8 +41,7 @@ export class RunPodClient {
 			this.activeJobs.add(id)
 			return id
 		} catch (err: unknown) {
-			const message = this.getErrorMessage(err)
-			throw new RunPodError(`Failed to submit job: ${message}`)
+			throw new RunPodError(`Failed to submit job: ${ensureError(err).message}`)
 		}
 	}
 
@@ -97,8 +75,7 @@ export class RunPodClient {
 
 				failures++
 				if (failures > 3) {
-					const message = this.getErrorMessage(err)
-					console.warn(`   ⚠️ Status check failed ${failures} times for ${id}:`, message)
+					console.warn(`   ⚠️ Status check failed ${failures} times for ${id}:`, ensureError(err).message)
 				}
 				await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
 			}
@@ -141,8 +118,7 @@ export class RunPodClient {
 			this.activeJobs.delete(id)
 			console.log(`   ⛔ Canceled job ${id}`)
 		} catch (err: unknown) {
-			const message = this.getErrorMessage(err)
-			console.error(`   ⚠️ Failed to cancel job ${id}:`, message)
+			console.error(`   ⚠️ Failed to cancel job ${id}:`, ensureError(err).message)
 		}
 	}
 
@@ -150,10 +126,5 @@ export class RunPodClient {
 		const jobs = Array.from(this.activeJobs)
 		if (jobs.length === 0) return
 		await Promise.all(jobs.map((id) => this.cancelJob(id)))
-	}
-
-	private getErrorMessage(err: unknown): string {
-		if (err instanceof Error) return err.message
-		return String(err)
 	}
 }

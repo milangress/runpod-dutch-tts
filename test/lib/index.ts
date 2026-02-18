@@ -4,6 +4,7 @@ import { RunPodClient } from "./client"
 
 export { RunPodClient } from "./client"
 export * from "./config"
+export * from "./errors"
 export * from "./types"
 
 export async function runTest(fn: (client: RunPodClient) => Promise<void>) {
