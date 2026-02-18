@@ -23,9 +23,9 @@ const endpoint = runpod.endpoint(ENDPOINT_ID)!
 
 // ── Configuration ──────────────────────────────────────────────────
 const TEXTS = [
-	"[S1] hallo, hoe gaat het met je vandaag?",
-	"[S1] het weer is vandaag prachtig in Amsterdam.",
-	"[S1] wil je een kopje koffie? [S2] ja graag, met melk alsjeblieft.",
+	"[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen.",
+	"[S1] het weer is vandaag prachtig in Amsterdam. de zon schijnt en de lucht is blauw. de temperatuur is ongeveer twintig graden Celsius, wat perfect is voor een wandeling door het park.",
+	"[S1] wil je een kopje koffie? Het is een beetje koud buiten, dus een warme kop koffie zou lekker zijn. Ik neem wel een cappuccino met havermelk alsjeblieft.",
 ]
 const PARAMS = {
 	max_new_tokens: 3072,
