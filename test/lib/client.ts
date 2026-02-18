@@ -1,23 +1,25 @@
-
 import runpodSdk from "runpod-sdk"
 import { loadConfig } from "./config"
 import type { RunPodJobInput, RunPodStatusResponse } from "./types"
+
+type RunpodSdk = ReturnType<typeof runpodSdk>
+type Endpoint = NonNullable<ReturnType<RunpodSdk["endpoint"]>>
 
 const TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 const POLL_INTERVAL_MS = 2000
 
 export class RunPodClient {
-	private runpod: any
-	private endpoint: any
+	private runpod: RunpodSdk
+	private endpoint: Endpoint
 	private activeJobs = new Set<string>()
 
 	constructor() {
 		const config = loadConfig()
 		this.runpod = runpodSdk(config.RUNPOD_API_KEY)
-		this.endpoint = this.runpod.endpoint(config.ENDPOINT_ID)
+		this.endpoint = this.runpod.endpoint(config.ENDPOINT_ID) as Endpoint
 
 		if (!this.endpoint) {
-			console.error(`Missing endpoint for ID: ${config.ENDPOINT_ID}`)
+			console.error(`Missing endpoint for ID: ${config.ENDPOINT_ID} `)
 			process.exit(1)
 		}
 
@@ -36,8 +38,9 @@ export class RunPodClient {
 			if (!id) throw new Error("No job ID returned from RunPod")
 			this.activeJobs.add(id)
 			return id
-		} catch (err: any) {
-			throw new Error(`Failed to submit job: ${err.message || err}`)
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err)
+			throw new Error(`Failed to submit job: ${message} `)
 		}
 	}
 
@@ -61,17 +64,18 @@ export class RunPodClient {
 
 				failures = 0 // Reset on success
 				await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-			} catch (err: any) {
+			} catch (err: unknown) {
 				failures++
 				if (failures > 3) {
-					console.warn(`   ⚠️ Status check failed ${failures} times for ${id}:`, err.message || err)
+					const message = err instanceof Error ? err.message : String(err)
+					console.warn(`   ⚠️ Status check failed ${failures} times for ${id}: `, message)
 				}
 				await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
 			}
 		}
 
 		await this.cancelJob(id)
-		throw new Error(`Job ${id} timed out after ${TIMEOUT_MS}ms`)
+		throw new Error(`Job ${id} timed out after ${TIMEOUT_MS} ms`)
 	}
 
 	async run(input: RunPodJobInput): Promise<RunPodStatusResponse> {
@@ -86,9 +90,10 @@ export class RunPodClient {
 			// Usually runpod sdk endpoint.cancel takes the id string
 			await this.endpoint.cancel(id)
 			this.activeJobs.delete(id)
-			console.log(`   ⛔ Canceled job ${id}`)
-		} catch (err: any) {
-			console.error(`   ⚠️ Failed to cancel job ${id}:`, err.message || err)
+			console.log(`   ⛔ Canceled job ${id} `)
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err)
+			console.error(`   ⚠️ Failed to cancel job ${id}: `, message)
 		}
 	}
 

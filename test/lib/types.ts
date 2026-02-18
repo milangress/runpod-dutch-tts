@@ -11,14 +11,12 @@ export interface RunPodJobInput {
 	output_format?: string
 	seed?: number
 	voice?: string
-	[key: string]: any
 }
 
 export interface RunPodJobOutput {
 	audio: string[]
 	format: string
 	error?: string
-	[key: string]: any
 }
 
 export type RunPodJobStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT"
