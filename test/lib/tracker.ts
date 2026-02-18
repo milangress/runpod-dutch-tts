@@ -223,7 +223,7 @@ export async function executeAll<T>(
 				}
 
 				const completedAt = Date.now()
-				const firstItem = batch.items[0]?.index !== undefined ? tracked[batch.items[0]!.index] : undefined
+				const firstItem = batch.items[0] ? tracked[batch.items[0].index] : undefined
 				const elapsed = (firstItem?.startedAt && firstItem.startedAt > 0) ? (completedAt - firstItem.startedAt) : 0
 				logToFile(`   ✅ Batch ${jobId} completed in ${(elapsed / 1000).toFixed(1)}s`)
 
@@ -249,7 +249,7 @@ export async function executeAll<T>(
 				}
 			} catch (err: unknown) {
 				activeJobs.delete(jobId)
-				const error = err instanceof Error ? err : ensureError(err)
+				const error = ensureError(err)
 				const completedAt = Date.now()
 
 				for (const { index } of batch.items) {

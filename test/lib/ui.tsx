@@ -117,7 +117,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 
 			{showItems && (
 				<Box flexDirection="column">
-					{items.map((item, i) => (
+					{items.map((item) => (
 						<ItemRow key={item.id} item={item} isParentFinal={isFinal} />
 					))}
 				</Box>
@@ -219,9 +219,9 @@ export async function runWithUI<T>(
 	options: RunAllOptions<T> = {}
 ): Promise<TrackedItem<T>[]> {
 	return new Promise((resolve, reject) => {
-		let unmountInk: () => void
+		const unmountRef = { current: () => {} }
 
-		const Wrapper = () => {
+		const Wrapper = ({ onUnmount }: { onUnmount: { current: () => void } }) => {
 			const [trackedItems, setTrackedItems] = useState<TrackedItem<T>[]>([])
 			const [error, setError] = useState<Error>()
 			const [cancelling, setCancelling] = useState(false)
@@ -243,7 +243,7 @@ export async function runWithUI<T>(
 						})
 					} else {
 						// Force exit on second press
-						if (unmountInk) unmountInk()
+						onUnmount.current()
 						process.exit(1)
 					}
 				}
@@ -267,12 +267,12 @@ export async function runWithUI<T>(
 					setTrackedItems([...final])
 					// Give UI a moment to show final state (e.g. cancelled) then exit
 					setTimeout(() => {
-						if (unmountInk) unmountInk()
+						onUnmount.current()
 						resolve(final)
 					}, 500)
 				}).catch((err) => {
 					if (mounted) setError(err)
-					if (unmountInk) unmountInk()
+					onUnmount.current()
 					reject(err)
 				})
 
@@ -284,7 +284,7 @@ export async function runWithUI<T>(
 			return <ProgressUI items={trackedItems} error={error} cancelling={cancelling} cancelError={cancelError} />
 		}
 
-		const { unmount } = render(<Wrapper />, { exitOnCtrlC: false })
-		unmountInk = unmount
+		const { unmount } = render(<Wrapper onUnmount={unmountRef} />, { exitOnCtrlC: false })
+		unmountRef.current = unmount
 	})
 }

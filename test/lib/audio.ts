@@ -31,6 +31,18 @@ export function concatenateWavBuffers(buffers: Buffer[]): Buffer {
 	if (buffers.length === 0) throw new Error("No buffers to concatenate")
 	if (buffers.length === 1) return buffers[0]!
 
+	// Validate WAV signature and 'fmt ' chunk for each buffer
+	for (let i = 0; i < buffers.length; i++) {
+		const buf = buffers[i]!
+		if (buf.length < 44 || buf.toString("utf8", 0, 4) !== "RIFF" || buf.toString("utf8", 8, 12) !== "WAVE") {
+			const sig = buf.length >= 12 ? `${buf.toString("utf8", 0, 4)}/${buf.toString("utf8", 8, 12)}` : "too short"
+			throw new Error(`Invalid WAV signature at buffer index ${i} (found ${sig})`)
+		}
+		if (buf.toString("utf8", 12, 16) !== "fmt ") {
+			throw new Error(`Missing 'fmt ' subchunk at buffer index ${i}`)
+		}
+	}
+
 	// Parse header from first WAV to get format info
 	const first = buffers[0]!
 	const numChannels = first.readUInt16LE(22)
@@ -72,7 +84,14 @@ export function getWavDuration(buffer: Buffer): number {
 		const byteRate = buffer.readUInt32LE(28)
 		if (byteRate === 0) return 0
 
-		const dataSize = buffer.length - 44
+		// Read data size from offset 40 (data chunk size)
+		let dataSize = buffer.readUInt32LE(40)
+
+		// Fallback to buffer length if header size is zero or suspicious
+		if (dataSize <= 0 || dataSize > buffer.length) {
+			dataSize = buffer.length - 44
+		}
+
 		return dataSize / byteRate
 	} catch (err) {
 		return 0

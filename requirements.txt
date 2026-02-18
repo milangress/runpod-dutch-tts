@@ -1,6 +1,9 @@
 # RunPod SDK
 runpod~=1.7.9
 
+# Pytorch, CUDA and torch is provided by the Dockerfile:
+# runpod/pytorch:1.0.2-cu1300-torch280-ubuntu2404
+
 # Model inference (HF Transformers)
 transformers>=4.56.2
 huggingface-hub>=0.30.2

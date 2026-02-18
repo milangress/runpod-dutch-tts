@@ -12,7 +12,7 @@ export function logToFile(message: string) {
 	const timestamp = new Date().toISOString()
 	try {
 		fs.appendFileSync(LOG_FILE, `[${timestamp}] ${message}\n`)
-	} catch (err) {
+	} catch {
 		// If logging fails, silently ignore to not break the app
 	}
 }

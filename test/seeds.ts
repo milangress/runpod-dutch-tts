@@ -14,7 +14,7 @@ runTest(async (client) => {
 			params: { seed },
 		})),
 		{
-			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 0, top_p: 0.8, top_k: 30 },
+			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 1, top_p: 0.8, top_k: 30 },
 			onProgress: async (item) => {
 				if (item.status === "COMPLETED" && item.audio) {
 					item.audioDuration = getWavDuration(item.audio)

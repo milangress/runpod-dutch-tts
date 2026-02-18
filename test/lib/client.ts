@@ -77,6 +77,7 @@ export class RunPodClient {
 			this.activeJobs.add(id)
 			return id
 		} catch (err: unknown) {
+			if (err instanceof RunPodError) throw err
 			throw new RunPodError(`Failed to submit job: ${ensureError(err).message}`)
 		}
 	}

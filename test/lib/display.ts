@@ -1,5 +1,5 @@
-import type { TrackedItem } from "./types"
 import { logToFile } from "./logger"
+import type { TrackedItem } from "./types"
 
 /**
  * Print a formatted summary table from tracked items.
@@ -49,7 +49,7 @@ export function printSummary<T>(
 	const ok = items.filter((i) => i.status === "COMPLETED").length
 	const failed = items.filter((i) => i.status === "FAILED").length
 	const elapsed = items
-		.filter((i) => i.elapsed)
+		.filter((i) => i.elapsed != null)
 		.map((i) => i.elapsed!)
 
 	const maxElapsed = elapsed.length > 0 ? Math.max(...elapsed) : 0

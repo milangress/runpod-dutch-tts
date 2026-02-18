@@ -125,14 +125,17 @@ def load_audio_from_b64(b64_audio: str) -> np.ndarray:
 
 def tensor_to_base64(audio_tensor: torch.Tensor, sample_rate: int, fmt: str = "wav") -> str:
     """Convert a torch.Tensor audio waveform to a base64-encoded string."""
-    # Ensure shape is (samples,) or (samples, channels).
-    # Model/torchaudio usually returns (channels, samples) or (samples,).
+    # Ensure shape is (samples,) or (samples, channels) as expected by soundfile.
+    # Model/torchaudio often returns (channels, samples).
     if audio_tensor.ndim == 2:
         channels, samples = audio_tensor.shape
-        if channels < samples:  # likely (channels, samples)
+        # Heuristic: audio has far more samples than channels (e.g., 2 vs 44100).
+        # If the first dimension is smaller, assume it's (channels, samples) and transpose.
+        if channels < samples:
             audio_tensor = audio_tensor.T  # to (samples, channels)
+            # If mono (samples, 1), squeeze to (samples,)
             if audio_tensor.shape[1] == 1:
-                audio_tensor = audio_tensor.squeeze(1)  # to (samples,)
+                audio_tensor = audio_tensor.squeeze(1)
     elif audio_tensor.ndim > 2:
         raise ValueError(f"Unsupported audio tensor shape: {audio_tensor.shape}")
 

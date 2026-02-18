@@ -1,5 +1,5 @@
 import { runTest, runWithUI, writeOutput } from "./lib"
-
+import { getWavDuration } from "./lib/audio"
 /**
  * Fast diagnostic test with small batches.
  * Useful for verifying connectivity and UI without long generation times.
@@ -16,7 +16,6 @@ runTest(async (client) => {
 			params: { max_new_tokens: 128 },
 			onProgress: async (item) => {
 				if (item.status === "COMPLETED" && item.audio) {
-					const { getWavDuration } = await import("./lib/audio")
 					item.audioDuration = getWavDuration(item.audio)
 					const out = await writeOutput(`fast/fast_${item.context}.wav`, item.audio)
 					item.outputPath = out.path

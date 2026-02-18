@@ -3,6 +3,7 @@ export class RunPodError extends Error {
 	constructor(message: string) {
 		super(message)
 		this.name = "RunPodError"
+		Object.setPrototypeOf(this, RunPodError.prototype)
 	}
 }
 
@@ -10,6 +11,7 @@ export class JobFailedError extends RunPodError {
 	constructor(public jobId: string, message: string) {
 		super(`Job ${jobId} failed: ${message}`)
 		this.name = "JobFailedError"
+		Object.setPrototypeOf(this, JobFailedError.prototype)
 	}
 }
 
@@ -17,6 +19,7 @@ export class JobTimeoutError extends RunPodError {
 	constructor(public jobId: string, timeoutMs: number) {
 		super(`Job ${jobId} timed out after ${timeoutMs}ms`)
 		this.name = "JobTimeoutError"
+		Object.setPrototypeOf(this, JobTimeoutError.prototype)
 	}
 }
 
