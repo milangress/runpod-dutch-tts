@@ -9,7 +9,7 @@ import type {
 	TrackedItem,
 } from "./types"
 
-import { logErrorToFile } from "./logger"
+import { logErrorToFile, logToFile } from "./logger"
 
 const POLL_INTERVAL_MS = 2000
 const TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
@@ -113,7 +113,7 @@ export async function executeAll<T>(
 
 	const totalItems = items.length
 	const totalBatches = batches.length
-	// console.log(`\n📦 ${totalItems} item(s) → ${totalBatches} batch(es) (max ${batchSize} per batch)`)
+	logToFile(`\n📦 ${totalItems} item(s) → ${totalBatches} batch(es) (max ${batchSize} per batch)`)
 
 	// Initialize tracked items with batch info
 	const tracked: TrackedItem<T>[] = new Array(items.length)
@@ -168,7 +168,8 @@ export async function executeAll<T>(
 
 			submittedBatches.push({ batch, jobId })
 
-			// console.log(`   🚀 Batch ${b + 1}/${totalBatches} → ${jobId} [${itemLabels}]`)
+			const itemLabels = batch.items.map((item) => item.request.label || item.request.text.slice(0, 20)).join(", ")
+			logToFile(`   🚀 Batch ${b + 1}/${totalBatches} → ${jobId} [${itemLabels}]`)
 
 			onBatchSubmit?.(jobId, batch.items.length)
 		} catch (err: unknown) {
@@ -186,7 +187,9 @@ export async function executeAll<T>(
 	}
 
 	// Poll all submitted batches concurrently
-	// console.log(`\n⏳ Polling ${submittedBatches.length} job(s)...`)
+	if (submittedBatches.length > 0) {
+		logToFile(`\n⏳ Polling ${submittedBatches.length} job(s)...`)
+	}
 
 	await Promise.all(
 		submittedBatches.map(async ({ batch, jobId }) => {
@@ -217,6 +220,8 @@ export async function executeAll<T>(
 				}
 
 				const completedAt = Date.now()
+				const elapsed = completedAt - (batch.items[0]?.index !== undefined ? tracked[batch.items[0]!.index]!.startedAt ?? completedAt : completedAt)
+				logToFile(`   ✅ Batch ${jobId} completed in ${(elapsed / 1000).toFixed(1)}s`)
 
 				for (let j = 0; j < batch.items.length; j++) {
 					const { index } = batch.items[j]!
@@ -256,6 +261,10 @@ export async function executeAll<T>(
 		})
 	)
 
+	const completed = tracked.filter((item) => item.status === "COMPLETED").length
+	const failed = tracked.filter((item) => item.status === "FAILED").length
+	logToFile(`\n✨ Done: ${completed} completed, ${failed} failed`)
+
 	return tracked
 }
 
@@ -269,6 +278,7 @@ async function pollJob(
 	onStatusUpdate?: (status: string) => void
 ): Promise<RunPodStatusResponse> {
 	const start = Date.now()
+	logToFile(`   ⏳ Polling job ${jobId}...`)
 
 	while (Date.now() - start < timeoutMs) {
 		const status = (await endpoint.status(jobId)) as RunPodStatusResponse

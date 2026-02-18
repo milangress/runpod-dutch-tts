@@ -32,6 +32,7 @@ export class RunPodClient {
 		}
 
 		this.endpoint = endpoint as Endpoint
+		logToFile(`🔌 Connected to RunPod endpoint: ${config.ENDPOINT_ID}`)
 	}
 
 	// ── High-level API ──────────────────────────────────────────

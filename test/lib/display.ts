@@ -1,4 +1,5 @@
 import type { TrackedItem } from "./types"
+import { logToFile } from "./logger"
 
 /**
  * Print a formatted summary table from tracked items.
@@ -11,7 +12,7 @@ export function printSummary<T>(
 	columns: (item: TrackedItem<T>) => Record<string, string | number | undefined>
 ): void {
 	if (items.length === 0) {
-		console.log("\n📊 No items to summarize.")
+		logToFile("\n📊 No items to summarize.")
 		return
 	}
 
@@ -35,14 +36,14 @@ export function printSummary<T>(
 	// Print
 	const sep = "─".repeat(allKeys.reduce((sum, k) => sum + widths[k]! + 3, 0) + 1)
 
-	console.log("\n📊 Summary:")
-	console.log(sep)
-	console.log(allKeys.map((k) => k.padEnd(widths[k]!)).join("   "))
-	console.log(sep)
+	logToFile("\n📊 Summary:")
+	logToFile(sep)
+	logToFile(allKeys.map((k) => k.padEnd(widths[k]!)).join("   "))
+	logToFile(sep)
 	for (const row of rows) {
-		console.log(allKeys.map((k) => (row[k] || "—").padEnd(widths[k]!)).join("   "))
+		logToFile(allKeys.map((k) => (row[k] || "—").padEnd(widths[k]!)).join("   "))
 	}
-	console.log(sep)
+	logToFile(sep)
 
 	// Stats
 	const ok = items.filter((i) => i.status === "COMPLETED").length
@@ -52,7 +53,7 @@ export function printSummary<T>(
 		.map((i) => i.elapsed!)
 
 	const maxElapsed = elapsed.length > 0 ? Math.max(...elapsed) : 0
-	console.log(`\n   ✅ ${ok} completed, ❌ ${failed} failed, ⏱️  ${(maxElapsed / 1000).toFixed(1)}s max`)
+	logToFile(`\n   ✅ ${ok} completed, ❌ ${failed} failed, ⏱️  ${(maxElapsed / 1000).toFixed(1)}s max`)
 }
 
 function statusIcon(status: string): string {
