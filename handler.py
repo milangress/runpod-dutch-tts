@@ -282,15 +282,25 @@ def handler(job):
 
     # -- Log generation settings --
     mode = "voice_clone" if audio_prompt_b64 else "tts"
-    print(f"\n🔧 Generation settings ({mode}, {'batch' if is_batch else 'single'}):")
-    print(f"   texts: {len(input_texts)}x, chars: {[len(t) for t in input_texts]}")
+    print(f"\n🔧 Generation ({mode}, {'batch' if is_batch else 'single'}):")
     for i, t in enumerate(input_texts):
-        print(f"   text[{i}]: \"{t[:100]}{'...' if len(t) > 100 else ''}\"")
-    print(f"   max_new_tokens={max_new_tokens}, guidance_scale={guidance_scale}")
-    print(f"   temperature={temperature}, top_p={top_p}, top_k={top_k}")
-    print(f"   seed={seed}, output_format={output_format}")
-    if audio_prompt_b64:
-        print(f"   audio_prompt=<{len(audio_prompt_b64) * 3 // 4 // 1024} KB>, audio_prompt_len={audio_prompt_len} tokens")
+        print(f"   text[{i}]: \"{t}\"")
+    settings = {
+        "max_new_tokens": max_new_tokens,
+        "guidance_scale": guidance_scale,
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_k": top_k,
+        "seed": seed,
+        "output_format": output_format,
+    }
+    if voice:
+        settings["voice"] = voice
+    if audio_prompt_b64 and not voice:
+        settings["audio_prompt"] = f"<{len(audio_prompt_b64) * 3 // 4 // 1024} KB>"
+    if audio_prompt_len is not None:
+        settings["audio_prompt_len"] = audio_prompt_len
+    print(f"   {json.dumps(settings)}")
 
     # -- Generation --
     generate_kwargs = {
