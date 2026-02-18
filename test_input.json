@@ -1,6 +1,8 @@
 {
   "input": {
-    "text": "[S1] denk je dat je een open source model kan trainen met weinig geld en middelen? [S2] ja, ik denk het wel. [S1] oh ja, hoe dan? [S2] nou kijk maar in de repo op Git Hub of Hugging Face.",
+    "texts": [
+      "[S1] denk je dat je een open source model kan trainen met weinig geld en middelen? [S2] ja, ik denk het wel. [S1] oh ja, hoe dan? [S2] nou kijk maar in de repo op Git Hub of Hugging Face."
+    ],
     "max_new_tokens": 3072,
     "guidance_scale": 3.0,
     "temperature": 1.8,
