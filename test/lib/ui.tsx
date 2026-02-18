@@ -47,24 +47,41 @@ const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
 }
 
 const BatchGroup = ({ index, total, items }: { index: number, total: number, items: TrackedItem<any>[] }) => {
-	const isRunning = items.some((i) => i.status === "running")
 	const isFailed = items.some((i) => i.status === "failed")
 	const isCompleted = items.every((i) => i.status === "completed")
 	const isQueued = items.every((i) => i.status === "queued")
 
-	// Header
+	// Check if this batch is effectively running (submitted to RunPod)
+	const isSubmitted = items.some((i) => i.status === "running")
+	const isRunning = isSubmitted && !isFailed && !isCompleted
+
+	// Determine specific RunPod status (shared by items in batch)
+	const rawStatus = isRunning ? items.find((i) => i.runpodStatus)?.runpodStatus : undefined
+
+	// Expansion logic: Only expand if IN_PROGRESS, COMPLETED, or FAILED
+	const showItems = isFailed || isCompleted || (isRunning && rawStatus === "IN_PROGRESS")
+
+	// Header Logic
 	let icon: any = "•"
 	let color = "gray"
-	let statusText = isQueued ? "queued" : isRunning ? "running" : isCompleted ? "done" : "failed"
+	let statusText = isQueued ? "queued" : isCompleted ? "done" : isFailed ? "failed" : "queued" // Default to queued if running but no status
 
 	if (isRunning) {
-		icon = <Spinner type="dots" />
-		color = "cyan"
-		// Check for specific runpod status
-		const rawStatus = items.find((i) => i.runpodStatus)?.runpodStatus
+		// If we have a raw status, use it
 		if (rawStatus) {
 			statusText = rawStatus
-			if (rawStatus === "IN_QUEUE") color = "magenta"
+			if (rawStatus === "IN_QUEUE") {
+				color = "magenta"
+				icon = <Spinner type="dots" />
+			} else if (rawStatus === "IN_PROGRESS") {
+				color = "cyan"
+				icon = <Spinner type="dots" />
+			}
+		} else {
+			// Submitted but no poll result yet
+			statusText = "queued"
+			color = "magenta"
+			icon = <Spinner type="dots" />
 		}
 	} else if (isFailed) {
 		icon = "✖"
@@ -86,7 +103,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 				{isCompleted && <Text color="dim">{duration}</Text>}
 			</Box>
 
-			{!isQueued && (
+			{showItems && (
 				<Box flexDirection="column">
 					{items.map((item, i) => (
 						<ItemRow key={i} item={item} />
