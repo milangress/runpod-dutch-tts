@@ -1,7 +1,5 @@
 
-import { mkdir, writeFile } from "fs/promises"
-import { join } from "path"
-import { runTest } from "./lib"
+import { ensureDir, outDir, runTest } from "./lib"
 
 const SEEDS = [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
 const TEXT = "[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen."
@@ -15,9 +13,6 @@ const PARAMS = {
 }
 
 runTest(async (client) => {
-	const outDir = join(import.meta.dir, "output", "seeds")
-	await mkdir(outDir, { recursive: true })
-
 	console.log(`🔬 Seed exploration — ${SEEDS.length} seeds (parallel)`)
 	console.log(`   Text: "${TEXT}"`)
 
@@ -40,10 +35,22 @@ runTest(async (client) => {
 				const elapsed = ((Date.now() - start) / 1000).toFixed(1)
 				const output = status.output
 
-				if (output?.audio?.[0]) {
-					const audioBuffer = Buffer.from(output.audio[0], "base64")
-					const filename = `seed_${seed}.${output.format || "wav"}`
-					await writeFile(join(outDir, filename), audioBuffer)
+				const audioString = output?.audio?.[0]
+
+				if (audioString) {
+					const audioBuffer = Buffer.from(audioString, "base64")
+					const filename = `seed_${seed}.${output?.format || "wav"}`
+
+					// Use helper to get the output file reference
+					// Subpath relative to test/output/
+					const file = outDir(`seeds/${filename}`)
+
+					// Ensure the directory exists (test/output/seeds/)
+					await ensureDir(file.name!)
+
+					// Write using Bun.write
+					await Bun.write(file, audioBuffer)
+
 					const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)
 					console.log(`   ✅ Seed ${String(seed).padEnd(6)} — ${elapsed}s — ${sizeKB} KB → ${filename}`)
 					return { seed, status: "ok", file: filename, size: `${sizeKB} KB`, elapsed: `${elapsed}s` }
@@ -75,5 +82,5 @@ runTest(async (client) => {
 		)
 	}
 	console.log("─".repeat(55))
-	console.log(`\n🎧 Listen to the files in: ${outDir}`)
+	console.log(`\n🎧 Listen to the files in: ${outDir("seeds").name}`)
 })

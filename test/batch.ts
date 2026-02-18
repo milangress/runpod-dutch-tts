@@ -1,7 +1,5 @@
 
-import { mkdir, writeFile } from "fs/promises"
-import { join } from "path"
-import { runTest } from "./lib"
+import { ensureDir, outDir, runTest } from "./lib"
 
 const TEXTS = [
 	"[S1] Ik ga volgende week op vakantie naar Italië. Ik heb er echt zin in, vooral in het lekkere eten en de mooie steden. Heb jij nog tips voor leuke plekken?",
@@ -30,9 +28,6 @@ const PARAMS = {
 }
 
 runTest(async (client) => {
-	const outDir = join(import.meta.dir, "output", "batch")
-	await mkdir(outDir, { recursive: true })
-
 	console.log(`📦 Batch TTS — ${TEXTS.length} texts in one request`)
 	TEXTS.forEach((t, i) => console.log(`   [${i}] "${t}"`))
 	console.log()
@@ -52,12 +47,23 @@ runTest(async (client) => {
 	for (let i = 0; i < audioList.length; i++) {
 		const audioBase64 = audioList[i]
 		if (!audioBase64) continue
+
 		const audioBuffer = Buffer.from(audioBase64, "base64")
 		const filename = `batch_${i}.${output.format || "wav"}`
-		await writeFile(join(outDir, filename), audioBuffer)
+
+		// Use helper to get the output file reference
+		// Subpath relative to test/output/
+		const file = outDir(`batch/${filename}`)
+
+		// Ensure the directory exists (test/output/batch/)
+		await ensureDir(file.name!)
+
+		// Write using Bun.write
+		await Bun.write(file, audioBuffer)
+
 		const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)
 		console.log(`   ${filename} — ${sizeKB} KB`)
 	}
 
-	console.log(`\n🎧 Files saved to: ${outDir}`)
+	console.log(`\n🎧 Files saved to: ${outDir("batch").name}`)
 })

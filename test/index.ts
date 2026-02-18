@@ -1,7 +1,5 @@
 
-import { mkdir, writeFile } from "fs/promises"
-import { join } from "path"
-import { runTest } from "./lib"
+import { ensureDir, outDir, runTest } from "./lib"
 
 const input = {
 	text: "[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen.",
@@ -15,9 +13,6 @@ const input = {
 }
 
 runTest(async (client) => {
-	const outDir = join(import.meta.dir, "output")
-	await mkdir(outDir, { recursive: true })
-
 	console.log("🎙️  Sending TTS request...")
 	console.log(`   Text: "${input.text}"`)
 
@@ -32,13 +27,21 @@ runTest(async (client) => {
 
 	const audioString = output.audio[0]
 	if (!audioString) throw new Error("Audio content missing")
+
 	const audioBuffer = Buffer.from(audioString, "base64")
 	const filename = `tts_${Date.now()}.${output.format || "wav"}`
-	const filepath = join(outDir, filename)
 
-	await writeFile(filepath, audioBuffer)
+	// Use helper to get the output file reference
+	// Subpath relative to test/output/
+	const file = outDir(filename)
 
-	console.log(`✅ Audio saved to: ${filepath}`)
+	// Ensure the directory exists (test/output/)
+	await ensureDir(file.name!)
+
+	// Write using Bun.write
+	await Bun.write(file, audioBuffer)
+
+	console.log(`✅ Audio saved to: ${file.name}`)
 	console.log(`   Format: ${output.format}`)
 	console.log(`   Size: ${(audioBuffer.byteLength / 1024).toFixed(1)} KB`)
 })

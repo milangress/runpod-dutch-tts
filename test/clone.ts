@@ -1,7 +1,6 @@
 
-import { mkdir, readFile, writeFile } from "fs/promises"
 import { join } from "path"
-import { runTest } from "./lib"
+import { ensureDir, outDir, runTest } from "./lib"
 
 // Transcript of the audio prompt file (must match what's spoken in the audio)
 const AUDIO_PROMPT_TRANSCRIPT =
@@ -28,16 +27,14 @@ const PARAMS = {
 }
 
 runTest(async (client) => {
-	const outDir = join(import.meta.dir, "output", "clone")
-	await mkdir(outDir, { recursive: true })
-	const audioPromptFile = join(import.meta.dir, "audio-prompt.wav")
+	const audioPromptFile = Bun.file(join(import.meta.dir, "audio-prompt.wav"))
 
 	console.log(`🎤 Voice cloning batch test — ${TEXTS.length} texts`)
-	console.log(`   Audio prompt: ${audioPromptFile}`)
+	console.log(`   Audio prompt: ${audioPromptFile.name}`)
 	console.log(`   Transcript:   "${AUDIO_PROMPT_TRANSCRIPT}"`)
 
-	const audioBytes = await readFile(audioPromptFile)
-	const audioB64 = audioBytes.toString("base64")
+	const audioBytes = await audioPromptFile.arrayBuffer()
+	const audioB64 = Buffer.from(audioBytes).toString("base64")
 
 	console.log("\n🚀 Sending voice cloning request...")
 	const result = await client.run({
@@ -56,11 +53,22 @@ runTest(async (client) => {
 	for (let i = 0; i < audioList.length; i++) {
 		const audioBase64 = audioList[i]
 		if (!audioBase64) continue
+
 		const audioBuffer = Buffer.from(audioBase64, "base64")
 		const filename = `clone_${i}.${output.format || "wav"}`
-		await writeFile(join(outDir, filename), audioBuffer)
+
+		// Use helper to get the output file reference
+		// Subpath relative to test/output/
+		const file = outDir(`clone/${filename}`)
+
+		// Ensure the directory exists (test/output/clone/)
+		await ensureDir(file.name!)
+
+		// Write using Bun.write
+		await Bun.write(file, audioBuffer)
+
 		console.log(`   ${filename} — ${(audioBuffer.byteLength / 1024).toFixed(1)} KB`)
 	}
 
-	console.log(`\n🎧 Files saved to: ${outDir}`)
+	console.log(`\n🎧 Files saved to: ${outDir("clone").name}`)
 })
