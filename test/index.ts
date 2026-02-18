@@ -43,6 +43,10 @@ console.log(`   Text: "${input.input.text}"`)
 console.log()
 
 try {
+	if (!endpoint) {
+		console.error("❌ No endpoint found.")
+		process.exit(1)
+	}
 	const result = await endpoint.runSync(input)
 
 	if (result.status === "COMPLETED") {
