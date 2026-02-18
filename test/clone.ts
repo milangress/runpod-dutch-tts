@@ -33,10 +33,10 @@ if (!endpoint) {
 
 // Transcript of the audio prompt file (must match what's spoken in the audio)
 const AUDIO_PROMPT_TRANSCRIPT =
-	"[S1] denk je dat je een open source model kan trainen met weinig geld en middelen? " +
-	"[S2] ja ik denk het wel. " +
-	"[S1] oh ja, hoe dan? " +
-	"[S2] nou kijk maar in de repo op Git Hub of Hugging Face."
+	"[S1] Denk je dat je een open source model kan trainen met weinig geld en middelen? " +
+	"[S2] Ja ik denk het wel. " +
+	"[S1] Oh ja, hoe dan? " +
+	"[S2] Nou kijk maar in de repo op Git Hub of Hugging Face."
 
 // 4 different texts to generate in the cloned voice (all S1 only, ~5 sentences each)
 const TEXTS = [
