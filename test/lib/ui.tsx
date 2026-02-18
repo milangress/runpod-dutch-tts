@@ -2,6 +2,7 @@ import { Box, render, Static, Text, useInput } from "ink"
 import Spinner from "ink-spinner"
 import { useEffect, useMemo, useState } from "react"
 import type { RunPodClient } from "./client"
+import { logErrorToFile } from "./logger"
 import type { ItemRequest, RunAllOptions, TrackedItem } from "./types"
 
 // ── Components ─────────────────────────────────────────────────────
@@ -76,42 +77,42 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	let statusText = "queued"
 
 	if (isRunning) {
-		statusText = "RUNNING"
+		statusText = "RUNNING ⏳"
 		color = "cyan"
 		icon = <Spinner type="dots" />
 	} else if (isFailed) {
-		statusText = "FAILED"
+		statusText = "FAILED ✖"
 		icon = "✖"
 		color = "red"
 	} else if (isCompleted) {
-		statusText = "DONE"
+		statusText = "FINISHED ✅"
 		icon = "✔"
 		color = "green"
 	} else if (isCancelled) {
-		statusText = "STOPPED"
+		statusText = "STOPPED ⊘"
 		icon = "⊘"
 		color = "yellow"
 	} else if (isQueued) {
 		const uniqueStatuses = Array.from(new Set(items.map(i => i.status)))
 		if (uniqueStatuses.includes("IN_QUEUE") || uniqueStatuses.includes("SUBMITTED")) {
-			statusText = "QUEUED"
+			statusText = "QUEUED 📋"
 			color = "magenta"
 			icon = <Spinner type="dots" />
 		} else {
-			statusText = "PENDING"
+			statusText = "PENDING ⌚"
 		}
 	}
 
 	const elapsed = items.reduce((max, i) => Math.max(max, i.elapsed || 0), 0)
-	const duration = elapsed > 0 ? `  ++ took ${(elapsed / 1000).toFixed(1)} s` : ""
+	const duration = elapsed > 0 ? ` took ${(elapsed / 1000).toFixed(1)}s` : ""
 
 	return (
-		<Box flexDirection="column" marginBottom={isFinal ? 1 : 0}>
+		<Box flexDirection="column">
 			<Box>
 				<Text color={color}>{icon} </Text>
 				<Text bold color={color}>Batch {index + 1}/{total}</Text>
 				<Text color="dim"> [{statusText}]</Text>
-				{isCompleted && <Text color="dim">{duration}</Text>}
+				{isCompleted && <Text color="dim"> — {duration}</Text>}
 			</Box>
 
 			{showItems && (
@@ -142,14 +143,22 @@ const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], e
 	let lastDoneIndex = -1
 	for (let i = 0; i < sortedBatches.length; i++) {
 		const [_, batchItems] = sortedBatches[i]!
-		// Batch is done if all items are final
-		const isDone = batchItems.every(item =>
-			item.status === "COMPLETED" ||
-			item.status === "FAILED" ||
-			item.status === "CANCELLED" ||
-			item.status === "TERMINATED" ||
-			item.status === "LOCAL_CANCELLED"
-		)
+		// Batch is done if all items are final AND metadata is loaded for completed ones
+		const isDone = batchItems.every(item => {
+			const isFinalStatus =
+				item.status === "COMPLETED" ||
+				item.status === "FAILED" ||
+				item.status === "CANCELLED" ||
+				item.status === "TERMINATED" ||
+				item.status === "LOCAL_CANCELLED"
+
+			if (!isFinalStatus) return false
+
+			// If completed, we want the metadata (path/duration) before freezing in Static
+			if (item.status === "COMPLETED" && !item.outputPath) return false
+
+			return true
+		})
 		if (isDone) {
 			lastDoneIndex = i
 		} else {
@@ -175,12 +184,14 @@ const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], e
 				)}
 			</Static>
 
-			<Box flexDirection="column" padding={1}>
+			<Box flexDirection="column">
 				{activeBatches.map(([idx, batchItems]) => (
-					<BatchGroup key={idx} index={idx} total={totalBatches} items={batchItems} />
+					<Box key={idx} marginBottom={0}>
+						<BatchGroup index={idx} total={totalBatches} items={batchItems} />
+					</Box>
 				))}
 
-				<Box marginTop={1} borderStyle="round" borderColor={cancelling ? "yellow" : failed > 0 ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
+				<Box borderStyle="round" borderColor={cancelling ? "yellow" : failed > 0 ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
 					<Text>
 						{cancelling ? <Text color="yellow" bold>Stopping... (Ctrl+C to force)  |  </Text> : null}
 						Total: {total}  |
@@ -223,7 +234,7 @@ export async function runWithUI<T>(
 						setCancelling(true)
 						controller.abort() // Stop new submissions (but executeAll allows polling to continue)
 						client.cancelAll().catch((err) => {
-							console.error("Failed to cancel all jobs:", err)
+							logErrorToFile("Failed to cancel all jobs", err)
 						})
 					} else {
 						// Force exit on second press
