@@ -91,17 +91,8 @@ export interface TrackedItem<T = void> {
 	startedAt?: number
 }
 
-export type TrackedItemStatus =
-	| "PENDING" // Local: In queue, not submitted
-	| "SUBMITTED" // Local: Request sent, waiting for ID
-	| "IN_QUEUE" // RunPod: Queued on server
-	| "IN_PROGRESS" // RunPod: Processing
-	| "COMPLETED" // RunPod: Done
-	| "FAILED" // RunPod: Error
-	| "CANCELLED" // RunPod: Cancelled
-	| "TERMINATED" // RunPod: Terminated
-	| "TIMED_OUT" // RunPod: Timed out
-	| "LOCAL_CANCELLED" // Local: Cancelled before submission
+export type LocalJobStatus = "PENDING" | "SUBMITTED" | "LOCAL_CANCELLED"
+export type TrackedItemStatus = LocalJobStatus | RunPodJobStatus
 
 /** Options for client.runAll() */
 export interface RunAllOptions<T = void> {

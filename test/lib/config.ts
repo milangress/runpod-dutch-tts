@@ -7,11 +7,6 @@ const envSchema = z.object({
 })
 
 export function loadConfig() {
-	if (!process.env.RUNPOD_API_KEY || !process.env.ENDPOINT_ID) {
-		console.error("Missing RUNPOD_API_KEY or ENDPOINT_ID in environment.")
-		process.exit(1)
-	}
-
 	const result = envSchema.safeParse(process.env)
 
 	if (!result.success) {

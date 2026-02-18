@@ -67,8 +67,11 @@ export function concatenateWavBuffers(buffers: Buffer[]): Buffer {
  */
 export function getWavDuration(buffer: Buffer): number {
 	try {
-		// WAV header: byte rate is at offset 28
+		// WAV header is 44 bytes. Check length and read byteRate at offset 28.
+		if (buffer.length < 44) return 0
 		const byteRate = buffer.readUInt32LE(28)
+		if (byteRate === 0) return 0
+
 		const dataSize = buffer.length - 44
 		return dataSize / byteRate
 	} catch (err) {

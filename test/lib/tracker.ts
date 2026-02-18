@@ -5,6 +5,7 @@ import type {
 	ItemRequest,
 	RunAllOptions,
 	RunPodJobInput,
+	RunPodJobStatus,
 	RunPodStatusResponse,
 	TrackedItem,
 } from "./types"
@@ -176,11 +177,12 @@ export async function executeAll<T>(
 			const error = ensureError(err)
 			const completedAt = Date.now()
 			for (const { index } of batch.items) {
-				tracked[index]!.status = "FAILED"
-				tracked[index]!.error = error
-				tracked[index]!.completedAt = completedAt
-				tracked[index]!.elapsed = completedAt - (tracked[index]!.startedAt ?? completedAt)
-				onStatusChange?.(tracked[index]!)
+				const item = tracked[index]!
+				item.status = "FAILED"
+				item.error = error
+				item.completedAt = completedAt
+				item.elapsed = (item.startedAt && item.startedAt > 0) ? (completedAt - item.startedAt) : 0
+				onStatusChange?.(item)
 			}
 			logErrorToFile(`Batch ${b + 1} submit failed`, error.message)
 		}
@@ -196,7 +198,7 @@ export async function executeAll<T>(
 			try {
 				const response = await pollJob(endpoint, jobId, TIMEOUT_MS, (status) => {
 					for (const { index } of batch.items) {
-						tracked[index]!.status = status as any // RunPod status matches TrackedItemStatus
+						tracked[index]!.status = status
 						onStatusChange?.(tracked[index]!)
 					}
 				})
@@ -205,11 +207,12 @@ export async function executeAll<T>(
 				if (response.status === "CANCELLED" || response.status === "TERMINATED" || response.status === "TIMED_OUT") {
 					const completedAt = Date.now()
 					for (const { index } of batch.items) {
-						tracked[index]!.status = response.status
-						tracked[index]!.error = new Error(response.status === "TIMED_OUT" ? "Job timed out" : "Job cancelled")
-						tracked[index]!.completedAt = completedAt
-						tracked[index]!.elapsed = completedAt - (tracked[index]!.startedAt ?? completedAt)
-						onStatusChange?.(tracked[index]!)
+						const item = tracked[index]!
+						item.status = response.status
+						item.error = new Error(response.status === "TIMED_OUT" ? "Job timed out" : "Job cancelled")
+						item.completedAt = completedAt
+						item.elapsed = (item.startedAt && item.startedAt > 0) ? (completedAt - item.startedAt) : 0
+						onStatusChange?.(item)
 					}
 					return // Skip output processing for cancelled jobs
 				}
@@ -220,7 +223,8 @@ export async function executeAll<T>(
 				}
 
 				const completedAt = Date.now()
-				const elapsed = completedAt - (batch.items[0]?.index !== undefined ? tracked[batch.items[0]!.index]!.startedAt ?? completedAt : completedAt)
+				const firstItem = batch.items[0]?.index !== undefined ? tracked[batch.items[0]!.index] : undefined
+				const elapsed = (firstItem?.startedAt && firstItem.startedAt > 0) ? (completedAt - firstItem.startedAt) : 0
 				logToFile(`   ✅ Batch ${jobId} completed in ${(elapsed / 1000).toFixed(1)}s`)
 
 				for (let j = 0; j < batch.items.length; j++) {
@@ -238,7 +242,7 @@ export async function executeAll<T>(
 					}
 
 					item.completedAt = completedAt
-					item.elapsed = completedAt - (item.startedAt ?? completedAt)
+					item.elapsed = (item.startedAt && item.startedAt > 0) ? (completedAt - item.startedAt) : 0
 
 					if (onProgress) await onProgress(item)
 					onStatusChange?.(item)
@@ -253,7 +257,7 @@ export async function executeAll<T>(
 					item.status = "FAILED"
 					item.error = error
 					item.completedAt = completedAt
-					item.elapsed = completedAt - (item.startedAt ?? completedAt)
+					item.elapsed = (item.startedAt && item.startedAt > 0) ? (completedAt - item.startedAt) : 0
 					if (onProgress) await onProgress(item)
 					onStatusChange?.(item)
 				}
@@ -275,7 +279,7 @@ async function pollJob(
 	endpoint: Endpoint,
 	jobId: string,
 	timeoutMs: number,
-	onStatusUpdate?: (status: string) => void
+	onStatusUpdate?: (status: RunPodJobStatus) => void
 ): Promise<RunPodStatusResponse> {
 	const start = Date.now()
 	logToFile(`   ⏳ Polling job ${jobId}...`)

@@ -105,21 +105,20 @@ def load_audio_from_b64(b64_audio: str) -> np.ndarray:
     except Exception as e:
         raise AppError("AUDIO_DECODING_FAILED", f"Invalid base64 string: {e}")
 
-    # Create temp file without keeping it open, so torchaudio can open it safely
-    f = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
-    tmp_path = f.name
-
+    # Create temp file and write bytes, ensuring it is closed before loading
+    tmp_path = None
     try:
-        f.write(audio_bytes)
-        f.flush()
-        f.close()
+        with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as f:
+            tmp_path = f.name
+            f.write(audio_bytes)
+            f.flush()
 
         waveform, sr = torchaudio.load(tmp_path)
         return _load_waveform(waveform, sr)
     except Exception as e:
         raise AppError("AUDIO_DECODING_FAILED", f"Failed to decode audio file: {e}")
     finally:
-        if os.path.exists(tmp_path):
+        if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
 
@@ -189,8 +188,12 @@ def _load_preset_voices() -> dict[str, PresetVoice]:
         logger.warning(f"No voices manifest found at {manifest_path}, preset voices disabled.")
         return voices
 
-    with open(manifest_path, encoding="utf-8") as f:
-        manifest = json.load(f)
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (json.JSONDecodeError, ValueError, OSError) as e:
+        logger.error(f"Failed to load voices manifest from {manifest_path}: {e}")
+        manifest = {}
 
     for voice_id, meta in manifest.items():
         filename = meta.get("file")
@@ -260,6 +263,9 @@ def parse_input(job_input: dict) -> JobParams:
 
     if not texts or not isinstance(texts, list):
         raise AppError("INVALID_INPUT", "Missing required field 'texts' (list of strings).")
+
+    if any(not isinstance(t, str) for t in texts):
+        raise AppError("INVALID_INPUT", "All items in 'texts' must be strings.")
 
 
     # Ensure every text starts with a speaker tag

@@ -45,11 +45,11 @@ const ItemRow = ({ item, isParentFinal }: { item: TrackedItem<any>, isParentFina
 						<Text color="dim">→ </Text>
 						<Text color="dim">"{snippet}"</Text>
 					</Box>
-					{isCompleted && item.outputPath && (
+					{isCompleted && item.outputPath && item.audio && (
 						<Box>
 							<Text color="dim">→ </Text>
 							<Text color="gray" italic>{item.outputPath}</Text>
-							<Text color="dim"> {(item.audio!.length / 1024).toFixed(1)}kb</Text>
+							<Text color="dim"> {(item.audio.length / 1024).toFixed(1)}kb</Text>
 						</Box>
 					)}
 				</Box>
@@ -126,7 +126,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	)
 }
 
-const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], error?: Error, cancelling?: boolean }) => {
+const ProgressUI = ({ items, error, cancelling, cancelError }: { items: TrackedItem<any>[], error?: Error, cancelling?: boolean, cancelError?: Error }) => {
 	// Group items by batch index
 	const batches = new Map<number, TrackedItem<any>[]>()
 
@@ -191,9 +191,10 @@ const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], e
 					</Box>
 				))}
 
-				<Box borderStyle="round" borderColor={cancelling ? "yellow" : failed > 0 ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
+				<Box borderStyle="round" borderColor={cancelling ? "yellow" : (failed > 0 || cancelError) ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
 					<Text>
 						{cancelling ? <Text color="yellow" bold>Stopping... (Ctrl+C to force)  |  </Text> : null}
+						{cancelError ? <Text color="red" bold>Stop failed: {cancelError.message} (Ctrl+C to force)  |  </Text> : null}
 						Total: {total}  |
 						<Text color="green"> ✔ {completed}</Text>  |
 						<Text color="red"> ✖ {failed}</Text>
@@ -224,6 +225,7 @@ export async function runWithUI<T>(
 			const [trackedItems, setTrackedItems] = useState<TrackedItem<T>[]>([])
 			const [error, setError] = useState<Error>()
 			const [cancelling, setCancelling] = useState(false)
+			const [cancelError, setCancelError] = useState<Error>()
 
 			// AbortController for cancellation
 			const controller = useMemo(() => new AbortController(), [])
@@ -232,8 +234,11 @@ export async function runWithUI<T>(
 				if (input === "c" && key.ctrl) {
 					if (!cancelling) {
 						setCancelling(true)
+						setCancelError(undefined)
 						controller.abort() // Stop new submissions (but executeAll allows polling to continue)
 						client.cancelAll().catch((err) => {
+							setCancelling(false)
+							setCancelError(err instanceof Error ? err : new Error(String(err)))
 							logErrorToFile("Failed to cancel all jobs", err)
 						})
 					} else {
@@ -276,7 +281,7 @@ export async function runWithUI<T>(
 				}
 			}, [])
 
-			return <ProgressUI items={trackedItems} error={error} cancelling={cancelling} />
+			return <ProgressUI items={trackedItems} error={error} cancelling={cancelling} cancelError={cancelError} />
 		}
 
 		const { unmount } = render(<Wrapper />, { exitOnCtrlC: false })

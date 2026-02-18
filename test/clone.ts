@@ -27,7 +27,7 @@ runTest(async (client) => {
 		{
 			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 1, top_p: 0.95, top_k: 50, seed: 30 },
 			onProgress: async (item) => {
-				if (item.status === "completed" && item.audio) {
+				if (item.status === "COMPLETED" && item.audio) {
 					await writeOutput(`clone/clone_${item.context}.${item.format}`, item.audio)
 				}
 			},

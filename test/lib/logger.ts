@@ -19,8 +19,15 @@ export function logToFile(message: string) {
 
 export function logErrorToFile(message: string, error?: any) {
 	const timestamp = new Date().toISOString()
-	const errText = error === undefined ? "" : ` - ${error instanceof Error ? error.message : String(error)}`
+	let errDetail = ""
+	if (error !== undefined) {
+		if (error instanceof Error) {
+			errDetail = ` - ${error.stack || error.message}`
+		} else {
+			errDetail = ` - ${String(error)}`
+		}
+	}
 	try {
-		fs.appendFileSync(LOG_FILE, `[${timestamp}] ERROR: ${message}${errText}\n`)
+		fs.appendFileSync(LOG_FILE, `[${timestamp}] ERROR: ${message}${errDetail}\n`)
 	} catch { }
 }

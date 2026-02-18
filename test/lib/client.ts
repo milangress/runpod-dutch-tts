@@ -92,6 +92,7 @@ export class RunPodClient {
 				const status = (await this.endpoint.status(id)) as RunPodStatusResponse
 
 				if (status.output && typeof status.output === "object" && "error" in status.output) {
+					this.activeJobs.delete(id)
 					throw new RunPodError(`Application error: ${status.output.error}`)
 				}
 
