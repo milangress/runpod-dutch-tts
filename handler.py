@@ -41,6 +41,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 import random
 import re
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -124,6 +125,17 @@ def load_audio_from_b64(b64_audio: str) -> np.ndarray:
 
 def tensor_to_base64(audio_tensor: torch.Tensor, sample_rate: int, fmt: str = "wav") -> str:
     """Convert a torch.Tensor audio waveform to a base64-encoded string."""
+    # Ensure shape is (samples,) or (samples, channels).
+    # Model/torchaudio usually returns (channels, samples) or (samples,).
+    if audio_tensor.ndim == 2:
+        channels, samples = audio_tensor.shape
+        if channels < samples:  # likely (channels, samples)
+            audio_tensor = audio_tensor.T  # to (samples, channels)
+            if audio_tensor.shape[1] == 1:
+                audio_tensor = audio_tensor.squeeze(1)  # to (samples,)
+    elif audio_tensor.ndim > 2:
+        raise ValueError(f"Unsupported audio tensor shape: {audio_tensor.shape}")
+
     audio_np = audio_tensor.cpu().float().numpy()
     buf = io.BytesIO()
     sf.write(buf, audio_np, sample_rate, format=fmt.upper())
@@ -288,6 +300,11 @@ def parse_input(job_input: dict) -> JobParams:
         except (ValueError, TypeError):
             raise AppError("INVALID_INPUT", f"Invalid seed value '{seed}': must be an integer.")
 
+    output_format = job_input.get("output_format", "wav").lower()
+    allowed_formats = {"wav", "mp3", "flac"}
+    if output_format not in allowed_formats:
+        raise AppError("INVALID_INPUT", f"Invalid output_format '{output_format}'. Allowed: {sorted(list(allowed_formats))}")
+
     return JobParams(
         input_texts=input_texts,
         max_new_tokens=max_new_tokens,
@@ -296,7 +313,7 @@ def parse_input(job_input: dict) -> JobParams:
         top_p=top_p,
         top_k=top_k,
         seed=seed,
-        output_format=job_input.get("output_format", "wav").lower(),
+        output_format=output_format,
         voice=job_input.get("voice"),
         audio_prompt_b64=job_input.get("audio_prompt"),
         audio_prompt_transcript=job_input.get("audio_prompt_transcript", ""),
@@ -368,8 +385,6 @@ def resolve_voice_cloning(params: JobParams) -> None:
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
-
-from contextlib import contextmanager
 
 @contextmanager
 def temporary_seed(seed: int | None):
