@@ -126,9 +126,11 @@ export interface RunAllOptions<T = void> {
 
 	/** Called whenever an item's status changes (queued → running → completed/failed) */
 	onStatusChange?: (item: TrackedItem<T>) => void
-
 	/** Called with the full array of tracked items immediately after initialization */
 	onInit?: (items: TrackedItem<T>[]) => void
+
+	/** AbortSignal to cancel the operation */
+	signal?: AbortSignal
 }
 
 /** Result of loading an audio prompt file */

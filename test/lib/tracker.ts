@@ -98,7 +98,7 @@ export async function executeAll<T>(
 	items: ItemRequest<T>[],
 	options: RunAllOptions<T> = {}
 ): Promise<TrackedItem<T>[]> {
-	const { params, batchSize = 3, onProgress, onBatchSubmit, onStatusChange, onInit } = options
+	const { params, batchSize = 3, onProgress, onBatchSubmit, onStatusChange, onInit, signal } = options
 
 	const batches = buildBatches(items, params, batchSize)
 
@@ -132,6 +132,17 @@ export async function executeAll<T>(
 
 	for (let b = 0; b < batches.length; b++) {
 		const batch = batches[b]!
+
+		if (signal?.aborted) {
+			// Mark remaining items as cancelled
+			for (const { index } of batch.items) {
+				tracked[index]!.status = "cancelled"
+				tracked[index]!.error = new Error("Operation aborted")
+				tracked[index]!.completedAt = Date.now()
+				onStatusChange?.(tracked[index]!)
+			}
+			continue
+		}
 		try {
 			const result = await endpoint.run({ input: batch.jobInput })
 			const jobId = result.id!
@@ -175,7 +186,7 @@ export async function executeAll<T>(
 						tracked[index]!.runpodStatus = status
 						onStatusChange?.(tracked[index]!)
 					}
-				})
+				}, signal)
 				activeJobs.delete(jobId)
 
 				if (response.status === "CANCELLED" || response.status === "TERMINATED") {
@@ -245,7 +256,8 @@ async function pollJob(
 	endpoint: Endpoint,
 	jobId: string,
 	timeoutMs: number,
-	onStatusUpdate?: (status: string) => void
+	onStatusUpdate?: (status: string) => void,
+	signal?: AbortSignal
 ): Promise<RunPodStatusResponse> {
 	const start = Date.now()
 
@@ -266,7 +278,18 @@ async function pollJob(
 			throw new JobFailedError(jobId, status.error || "Job failed without error message")
 		}
 
-		await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+		// Wait with abort support
+		await new Promise<void>((resolve) => {
+			const timer = setTimeout(resolve, POLL_INTERVAL_MS)
+			if (signal) {
+				signal.addEventListener("abort", () => {
+					clearTimeout(timer)
+					resolve()
+				}, { once: true })
+			}
+		})
+
+		if (signal?.aborted) return { id: jobId, status: "CANCELLED" }
 	}
 
 	// Timeout — try to cancel

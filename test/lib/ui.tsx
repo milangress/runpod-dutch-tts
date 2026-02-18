@@ -1,6 +1,6 @@
-import { Box, render, Text, useApp, useInput } from "ink"
+import { Box, render, Static, Text, useInput } from "ink"
 import Spinner from "ink-spinner"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { RunPodClient } from "./client"
 import type { ItemRequest, RunAllOptions, TrackedItem } from "./types"
 
@@ -136,32 +136,60 @@ const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], e
 	const sortedBatches = Array.from(batches.entries()).sort((a, b) => a[0] - b[0])
 	const totalBatches = items.length > 0 ? (items[0]?.batchTotal ?? sortedBatches.length) : 0
 
+	// Logic for Static vs Dynamic
+	// We want to move COMPLETED/FAILED/CANCELLED batches to Static, BUT only if they are sequential from the start.
+	// This ensures we don't have gaps in the log.
+
+	let lastDoneIndex = -1
+	for (let i = 0; i < sortedBatches.length; i++) {
+		const [idx, batchItems] = sortedBatches[i]!
+		const isDone = batchItems.every(item => item.status === "completed" || item.status === "failed" || item.status === "cancelled")
+		if (isDone) {
+			lastDoneIndex = i
+		} else {
+			break
+		}
+	}
+
+	const doneBatches = sortedBatches.slice(0, lastDoneIndex + 1)
+	const activeBatches = sortedBatches.slice(lastDoneIndex + 1)
+
 	// Stats
 	const completed = items.filter(i => i.status === "completed").length
 	const failed = items.filter(i => i.status === "failed").length
 	const total = items.length
 
 	return (
-		<Box flexDirection="column" padding={1}>
-			{sortedBatches.map(([idx, batchItems]) => (
-				<BatchGroup key={idx} index={idx} total={totalBatches} items={batchItems} />
-			))}
+		<>
+			<Static items={doneBatches}>
+				{([idx, batchItems]) => (
+					<Box key={idx} marginBottom={0}>
+						<BatchGroup index={idx} total={totalBatches} items={batchItems} />
+					</Box>
+				)}
+			</Static>
 
-			<Box marginTop={1} borderStyle="round" borderColor={cancelling ? "yellow" : failed > 0 ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
-				<Text>
-					{cancelling ? <Text color="yellow" bold>Stopping... (Ctrl+C to force)  |  </Text> : null}
-					Total: {total}  |
-					<Text color="green"> ✔ {completed}</Text>  |
-					<Text color="red"> ✖ {failed}</Text>
-				</Text>
-			</Box>
+			<Box flexDirection="column" padding={1}>
+				{activeBatches.map(([idx, batchItems]) => (
+					<BatchGroup key={idx} index={idx} total={totalBatches} items={batchItems} />
+				))}
 
-			{error && (
-				<Box marginTop={1}>
-					<Text color="red" bold>Error: {error.message}</Text>
+				<Box marginTop={1} borderStyle="round" borderColor={cancelling ? "yellow" : failed > 0 ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
+					<Text>
+						{cancelling ? <Text color="yellow" bold>Stopping... (Ctrl+C to force)  |  </Text> : null}
+						Total: {total}  |
+						<Text color="green"> ✔ {completed}</Text>  |
+						<Text color="red"> ✖ {failed}</Text>
+					</Text>
 				</Box>
-			)}
-		</Box>
+
+				{error && (
+					<Box marginTop={1}>
+						<Text color="red" bold>Error: {error.message}</Text>
+					</Box>
+				)}
+			</Box>
+		</>
 	)
 }
 
@@ -173,22 +201,28 @@ export async function runWithUI<T>(
 	options: RunAllOptions<T> = {}
 ): Promise<TrackedItem<T>[]> {
 	return new Promise((resolve, reject) => {
+		let unmountInk: () => void
+
 		const Wrapper = () => {
 			const [trackedItems, setTrackedItems] = useState<TrackedItem<T>[]>([])
 			const [error, setError] = useState<Error>()
 			const [cancelling, setCancelling] = useState(false)
-			const { exit } = useApp()
+
+			// AbortController for cancellation
+			const controller = useMemo(() => new AbortController(), [])
 
 			useInput((input, key) => {
 				if (input === "c" && key.ctrl) {
 					if (!cancelling) {
 						setCancelling(true)
+						controller.abort() // Cancel new submissions and stop polling
 						client.cancelAll().catch((err) => {
-							setError(err)
+							// Fire and forget cancellation cleanup
+							// setError(err)
 						})
-						// Don't exit yet, wait for tracker updates
 					} else {
-						// Force exit
+						// Force exit on second press
+						if (unmountInk) unmountInk()
 						process.exit(1)
 					}
 				}
@@ -199,6 +233,7 @@ export async function runWithUI<T>(
 
 				client.runAll(items, {
 					...options,
+					signal: controller.signal,
 					onInit: (initItems) => {
 						if (mounted) setTrackedItems([...initItems])
 					},
@@ -209,12 +244,14 @@ export async function runWithUI<T>(
 				}).then((final) => {
 					if (!mounted) return
 					setTrackedItems([...final])
+					// Give UI a moment to show final state (e.g. cancelled) then exit
 					setTimeout(() => {
-						// If we were cancelling, we resolve with partial results
+						if (unmountInk) unmountInk()
 						resolve(final)
 					}, 500)
 				}).catch((err) => {
 					if (mounted) setError(err)
+					if (unmountInk) unmountInk()
 					reject(err)
 				})
 
@@ -225,5 +262,6 @@ export async function runWithUI<T>(
 		}
 
 		const { unmount } = render(<Wrapper />)
+		unmountInk = unmount
 	})
 }
