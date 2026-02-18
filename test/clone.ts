@@ -44,14 +44,14 @@ const TEXTS = [
 	"[S1] koken is een van mijn favoriete hobby's. elke avond probeer ik iets nieuws te maken in de keuken. gisteren heb ik een heerlijke stamppot gemaakt met boerenkool en rookworst. het recept komt van mijn oma en het smaakt altijd fantastisch. de geur van verse kruiden maakt het helemaal af.",
 ]
 
-const AUDIO_PROMPT_FILE = join(import.meta.dir, "audio-prompt.mp3")
+const AUDIO_PROMPT_FILE = join(import.meta.dir, "audio-prompt.wav")
 
 const PARAMS = {
 	max_new_tokens: 3072,
 	guidance_scale: 3.0,
-	temperature: 0,
-	top_p: 0.8,
-	top_k: 30,
+	temperature: 1,
+	top_p: 0.95,
+	top_k: 50,
 	output_format: "wav",
 	seed: 30,
 }
