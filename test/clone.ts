@@ -73,22 +73,38 @@ TEXTS.forEach((t, i) => console.log(`   [${i}] "${t.slice(0, 80)}..."`))
 console.log()
 
 // Read and base64-encode the audio prompt
-const audioBytes = await readFile(AUDIO_PROMPT_FILE)
-const audioB64 = audioBytes.toString("base64")
-console.log(`   Audio prompt size: ${(audioBytes.byteLength / 1024).toFixed(1)} KB`)
+let audioBytes: Buffer
+let audioB64: string
+
+try {
+	audioBytes = await readFile(AUDIO_PROMPT_FILE)
+	audioB64 = audioBytes.toString("base64")
+	console.log(`   Audio prompt size: ${(audioBytes.byteLength / 1024).toFixed(1)} KB`)
+} catch (err) {
+	console.error(`\n❌ Missing audio prompt: please add audio-prompt.wav at ${AUDIO_PROMPT_FILE}`)
+	console.error(`   Error details:`, err)
+	process.exit(1)
+}
 
 const start = Date.now()
 
 // Send the batch request
 console.log("\n🚀 Sending voice cloning batch request...")
-const result = await endpoint.run({
-	input: {
-		texts: TEXTS,
-		audio_prompt: audioB64,
-		audio_prompt_transcript: AUDIO_PROMPT_TRANSCRIPT,
-		...PARAMS,
-	},
-})
+const result = await (async () => {
+	try {
+		return await endpoint.run({
+			input: {
+				texts: TEXTS,
+				audio_prompt: audioB64,
+				audio_prompt_transcript: AUDIO_PROMPT_TRANSCRIPT,
+				...PARAMS,
+			},
+		})
+	} catch (err) {
+		console.error("\n❌ Failed to send voice cloning request:", err)
+		process.exit(1)
+	}
+})()
 
 const id = result.id
 if (!id) {
