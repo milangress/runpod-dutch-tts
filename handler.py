@@ -164,9 +164,13 @@ def handler(job):
             input_texts = [audio_prompt_transcript + " " + t for t in input_texts]
 
         audio_array = load_audio_from_b64(audio_prompt_b64)
+
+        # Processor expects one audio sample per text — duplicate for batch
+        audio_batch = [audio_array] * len(input_texts) if len(input_texts) > 1 else audio_array
+
         inputs = processor(
             text=input_texts,
-            audio=audio_array,
+            audio=audio_batch,
             padding=True,
             return_tensors="pt",
         ).to(DEVICE)
