@@ -9,6 +9,17 @@ import { mkdir, writeFile } from "fs/promises"
 import { join } from "path"
 import runpodSdk from "runpod-sdk"
 
+interface RunPodStatusResponse {
+	id: string
+	status: "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED"
+	output?: {
+		audio: string[]
+		format: string
+		error?: string
+	}
+	error?: string
+}
+
 const { RUNPOD_API_KEY, ENDPOINT_ID } = process.env
 
 if (!RUNPOD_API_KEY || !ENDPOINT_ID) {
@@ -19,7 +30,12 @@ if (!RUNPOD_API_KEY || !ENDPOINT_ID) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const runpod = runpodSdk(RUNPOD_API_KEY)
-const endpoint = runpod.endpoint(ENDPOINT_ID)!
+const endpoint = runpod.endpoint(ENDPOINT_ID)
+
+if (!endpoint) {
+	console.error(`Failed to get endpoint for ID: ${ENDPOINT_ID}`)
+	process.exit(1)
+}
 
 // ── Configuration ──────────────────────────────────────────────────
 const TEXTS = [
@@ -53,30 +69,35 @@ const result = await endpoint.run({
 	input: { texts: TEXTS, ...PARAMS },
 })
 
-const id = result.id!
+const id = result.id
+if (!id) {
+	console.error("Missing job ID in result:", result)
+	process.exit(1)
+}
+
 console.log(`   Job ID: ${id}`)
 
 // Poll for completion
 let done = false
 while (!done) {
-	const status = (await endpoint.status(id)) as any
+	const status = (await endpoint.status(id)) as RunPodStatusResponse
 
 	if (status.status === "COMPLETED") {
 		done = true
 		const elapsed = ((Date.now() - start) / 1000).toFixed(1)
 		const output = status.output
 
-		if (output.error) {
+		if (output?.error) {
 			console.error(`\n❌ Error: ${output.error}`)
 			process.exit(1)
 		}
 
-		const audioList: string[] = output.audio
+		const audioList: string[] = output?.audio || []
 		console.log(`\n✅ Batch complete in ${elapsed}s — ${audioList.length} audio files`)
 
 		for (let i = 0; i < audioList.length; i++) {
 			const audioBuffer = Buffer.from(audioList[i]!, "base64")
-			const filename = `batch_${i}.${output.format || "wav"}`
+			const filename = `batch_${i}.${output?.format || "wav"}`
 			await writeFile(join(outDir, filename), audioBuffer)
 			const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)
 			console.log(`   ${filename} — ${sizeKB} KB`)
@@ -85,7 +106,7 @@ while (!done) {
 		console.log(`\n🎧 Files saved to: ${outDir}`)
 	} else if (status.status === "FAILED") {
 		done = true
-		console.error(`\n❌ Job failed:`, (status as any).error || status)
+		console.error(`\n❌ Job failed:`, (status as RunPodStatusResponse).error || status)
 		process.exit(1)
 	} else {
 		process.stdout.write(`   ⏳ ${status.status}...\r`)
