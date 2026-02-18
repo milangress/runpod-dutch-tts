@@ -88,6 +88,26 @@ def set_seed(seed: int):
     torch.backends.cudnn.benchmark = False
 
 
+def _strip_consecutive_speaker_tags(text: str) -> str:
+    """
+    Remove redundant consecutive speaker tags from text.
+
+    When the same speaker tag appears twice with no other speaker tag
+    in between, the second tag is removed.
+
+    Example:
+      "[S1] hello world [S1] more text [S2] reply [S1] back"
+    → "[S1] hello world more text [S2] reply [S1] back"
+    """
+    # Match a speaker tag followed by (non-tag text) and the same tag again
+    # Repeat until no more consecutive duplicates remain
+    prev = None
+    while prev != text:
+        prev = text
+        text = re.sub(r'(\[S\d+\])((?:(?!\[S\d+\]).)*)\1', r'\1\2', text)
+    return text
+
+
 def load_audio_from_b64(b64_audio: str) -> np.ndarray:
     """
     Decode a base64 audio string (wav/mp3/flac) to a numpy array at the
@@ -258,20 +278,13 @@ def handler(job):
         if np.abs(audio_array).max() < 1e-6:
             return {"error": "Audio prompt appears to be silent (all zeros). Check the audio file."}
 
-        # Voice cloning mode: prepend transcript to each text.
-        # Strip redundant leading speaker tag from text if it matches the
-        # last speaker in the transcript (avoids e.g. "[S1] ...transcript... [S1] text")
+        # Voice cloning mode: prepend transcript to each text, then clean up
+        # redundant consecutive speaker tags in the full prompt.
         if audio_prompt_transcript:
-            last_tag_match = re.findall(r'\[S\d+\]', audio_prompt_transcript)
-            last_tag = last_tag_match[-1] if last_tag_match else None
-
-            merged = []
-            for t in input_texts:
-                # If the text starts with the same speaker tag as the transcript ends with, strip it
-                if last_tag and t.strip().startswith(last_tag):
-                    t = t.strip()[len(last_tag):].lstrip()
-                merged.append(audio_prompt_transcript + " " + t)
-            input_texts = merged
+            input_texts = [
+                _strip_consecutive_speaker_tags(audio_prompt_transcript + " " + t)
+                for t in input_texts
+            ]
 
         # Processor expects one audio sample per text — duplicate for batch
         audio_batch = [audio_array] * len(input_texts) if len(input_texts) > 1 else audio_array
