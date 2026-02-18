@@ -137,6 +137,12 @@ def handler(job):
     else:
         return {"error": "Missing required field 'text' (string) or 'texts' (list of strings)."}
 
+    # Ensure every text starts with a speaker tag — default to [S1]
+    input_texts = [
+        t if re.match(r'^\[S\d+\]', t.strip()) else f"[S1] {t}"
+        for t in input_texts
+    ]
+
     # -- Optional generation params --
     max_new_tokens = int(job_input.get("max_new_tokens", 3072))
     guidance_scale = float(job_input.get("guidance_scale", 3.0))
