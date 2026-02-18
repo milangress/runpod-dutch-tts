@@ -3,6 +3,10 @@ RunPod Serverless Handler for Parkiet — Dutch Text-to-Speech (TTS)
 
 Loads the pevers/parkiet model (1.6B param Dia-based architecture) at startup
 and serves TTS requests via the RunPod serverless framework.
+
+Supports both single-text and batch requests:
+  - Single: { "text": "..." }         → { "audio": "<b64>", "format": "wav" }
+  - Batch:  { "texts": ["...", ...] }  → { "audio": ["<b64>", ...], "format": "wav" }
 """
 
 import base64
@@ -64,6 +68,12 @@ def audio_to_base64(audio_array: np.ndarray, sample_rate: int, fmt: str = "wav")
     return base64.b64encode(buf.read()).decode("utf-8")
 
 
+def tensor_to_base64(audio_tensor, sample_rate: int, fmt: str = "wav") -> str:
+    """Convert a torch.Tensor audio waveform to a base64 string."""
+    audio_np = audio_tensor.cpu().float().numpy()
+    return audio_to_base64(audio_np, sample_rate, fmt=fmt)
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -71,7 +81,7 @@ def handler(job):
     """
     RunPod handler for Dutch TTS.
 
-    Input schema:
+    Input schema (single):
         text            (str, required)  — Text to synthesise. Use [S1], [S2], etc. for speakers.
         max_new_tokens  (int, 3072)      — Maximum audio tokens to generate.
         guidance_scale  (float, 3.0)     — Classifier-free guidance scale.
@@ -82,15 +92,30 @@ def handler(job):
         audio_prompt    (str|null)       — Base64-encoded WAV for voice cloning.
         output_format   (str, "wav")     — Output audio format (wav / mp3 / flac).
 
-    Returns:
+    Input schema (batch):
+        texts           (list[str], required) — List of texts to synthesise in one batch.
+        (all other params same as above, applied to every text in the batch)
+
+    Returns (single):
         { "audio": "<base64 encoded audio>", "format": "wav" }
+
+    Returns (batch):
+        { "audio": ["<base64>", ...], "format": "wav", "count": N }
     """
     job_input = job["input"]
 
-    # -- Required --
-    text = job_input.get("text")
-    if not text:
-        return {"error": "Missing required field 'text'."}
+    # -- Determine single vs batch mode --
+    texts = job_input.get("texts")  # batch mode
+    text = job_input.get("text")    # single mode
+
+    if texts and isinstance(texts, list):
+        is_batch = True
+        input_texts = texts
+    elif text:
+        is_batch = False
+        input_texts = [text]
+    else:
+        return {"error": "Missing required field 'text' (string) or 'texts' (list of strings)."}
 
     # -- Optional generation params --
     max_new_tokens = int(job_input.get("max_new_tokens", 3072))
@@ -106,12 +131,8 @@ def handler(job):
     if seed is not None:
         set_seed(int(seed))
 
-    # -- Prepare text input --
-    # The processor expects a list of strings
-    if isinstance(text, str):
-        text = [text]
-
-    inputs = processor(text=text, padding=True, return_tensors="pt").to(DEVICE)
+    # -- Prepare text input (processor accepts list[str]) --
+    inputs = processor(text=input_texts, padding=True, return_tensors="pt").to(DEVICE)
 
     # -- Voice cloning (audio prompt) --
     audio_prompt_path = None
@@ -133,27 +154,34 @@ def handler(job):
     with torch.no_grad():
         outputs = model.generate(**inputs, **generate_kwargs)
 
-    # -- Decode audio --
-    decoded = processor.batch_decode(outputs)
+    # -- Decode audio (returns list[torch.Tensor], one per input text) --
+    audio_list = processor.batch_decode(outputs)
 
-    # Save to a temp file via the processor (handles codec decoding), then read back
-    tmp_output = f"/tmp/tts_output.{output_format}"
-    processor.save_audio(decoded, tmp_output)
+    # Get sample rate from processor config
+    sample_rate = processor.feature_extractor.sampling_rate
 
-    # Read the saved file and encode to base64
-    audio_data, sample_rate = sf.read(tmp_output)
-    audio_b64 = audio_to_base64(audio_data, sample_rate, fmt=output_format)
+    # -- Encode outputs to base64 --
+    audio_b64_list = [
+        tensor_to_base64(audio, sample_rate, fmt=output_format)
+        for audio in audio_list
+    ]
 
-    # Cleanup
+    # -- Cleanup --
     if audio_prompt_path and os.path.exists(audio_prompt_path):
         os.remove(audio_prompt_path)
-    if os.path.exists(tmp_output):
-        os.remove(tmp_output)
 
-    return {
-        "audio": audio_b64,
-        "format": output_format,
-    }
+    # -- Return single or batch response --
+    if is_batch:
+        return {
+            "audio": audio_b64_list,
+            "format": output_format,
+            "count": len(audio_b64_list),
+        }
+    else:
+        return {
+            "audio": audio_b64_list[0],
+            "format": output_format,
+        }
 
 
 runpod.serverless.start({"handler": handler})

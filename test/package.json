@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "bun run index.ts",
-    "seeds": "bun run seeds.ts"
+    "seeds": "bun run seeds.ts",
+    "batch": "bun run batch.ts"
   },
   "dependencies": {
     "runpod-sdk": "latest"
