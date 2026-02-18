@@ -1,4 +1,4 @@
-import { runTest, writeOutput } from "./lib"
+import { runTest, runWithUI, writeOutput } from "./lib"
 
 const AUDIO_PROMPT_TRANSCRIPT =
 	"[S1] Denk je dat je een open source model kan trainen met weinig geld en middelen? " +
@@ -15,10 +15,8 @@ const TEXTS = [
 
 runTest(async (client) => {
 	const audioPrompt = await client.loadAudioPrompt("audio-prompt.wav")
-
-	console.log(`🎤 Voice cloning — ${TEXTS.length} texts`)
-
-	const results = await client.runAll(
+	await runWithUI(
+		client,
 		TEXTS.map((text, i) => ({
 			text,
 			label: `clone_${i}`,
@@ -35,12 +33,4 @@ runTest(async (client) => {
 			},
 		}
 	)
-
-	client.printSummary(results, (item) => ({
-		"#": item.context,
-		Time: item.elapsed ? `${(item.elapsed / 1000).toFixed(1)}s` : "—",
-		Size: item.audio ? `${(item.audio.length / 1024).toFixed(1)} KB` : "—",
-	}))
-
-	console.log(`\n🎧 Files saved in output/clone/`)
 })

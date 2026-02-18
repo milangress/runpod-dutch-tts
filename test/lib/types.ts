@@ -94,6 +94,11 @@ export interface TrackedItem<T = void> {
 	elapsed?: number
 	/** Error if failed */
 	error?: Error
+
+	/** The batch index this item belongs to (0-based) */
+	batchIndex?: number
+	/** Total number of batches */
+	batchTotal?: number
 }
 
 /** Options for client.runAll() */
@@ -115,6 +120,12 @@ export interface RunAllOptions<T = void> {
 
 	/** Custom filename function (default: `${item.label}.${item.format}`) */
 	filename?: (item: TrackedItem<T>) => string
+
+	/** Called whenever an item's status changes (queued → running → completed/failed) */
+	onStatusChange?: (item: TrackedItem<T>) => void
+
+	/** Called with the full array of tracked items immediately after initialization */
+	onInit?: (items: TrackedItem<T>[]) => void
 }
 
 /** Result of loading an audio prompt file */

@@ -8,6 +8,7 @@ export * from "./config"
 export { printSummary } from "./display"
 export * from "./errors"
 export * from "./types"
+export { runWithUI } from "./ui"
 
 export async function runTest(fn: (client: RunPodClient) => Promise<void>) {
 	const client = new RunPodClient()

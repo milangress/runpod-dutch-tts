@@ -1,12 +1,11 @@
-import { runTest, writeOutput } from "./lib"
+import { runTest, runWithUI, writeOutput } from "./lib"
 
 const SEEDS = [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
 const TEXT = "[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen."
 
 runTest(async (client) => {
-	console.log(`🔬 Seed exploration — ${SEEDS.length} seeds`)
-
-	const results = await client.runAll(
+	await runWithUI(
+		client,
 		SEEDS.map((seed) => ({
 			text: TEXT,
 			label: `seed_${seed}`,
@@ -22,12 +21,4 @@ runTest(async (client) => {
 			},
 		}
 	)
-
-	client.printSummary(results, (item) => ({
-		Seed: item.context,
-		Time: item.elapsed ? `${(item.elapsed / 1000).toFixed(1)}s` : "—",
-		Size: item.audio ? `${(item.audio.length / 1024).toFixed(1)} KB` : "—",
-	}))
-
-	console.log(`\n🎧 Listen to the files in: output/seeds`)
 })

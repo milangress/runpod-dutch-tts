@@ -98,23 +98,33 @@ export async function executeAll<T>(
 	items: ItemRequest<T>[],
 	options: RunAllOptions<T> = {}
 ): Promise<TrackedItem<T>[]> {
-	const { params, batchSize = 3, onProgress, onBatchSubmit } = options
-
-	// Initialize tracked items
-	const tracked: TrackedItem<T>[] = items.map((item) => ({
-		text: item.text,
-		label: item.label,
-		context: item.context as T,
-		status: "queued",
-		format: (params?.output_format ?? item.params?.output_format ?? "wav"),
-		startedAt: 0,
-	}))
+	const { params, batchSize = 3, onProgress, onBatchSubmit, onStatusChange, onInit } = options
 
 	const batches = buildBatches(items, params, batchSize)
 
 	const totalItems = items.length
 	const totalBatches = batches.length
-	console.log(`\n📦 ${totalItems} item(s) → ${totalBatches} batch(es) (max ${batchSize} per batch)`)
+	// console.log(`\n📦 ${totalItems} item(s) → ${totalBatches} batch(es) (max ${batchSize} per batch)`)
+
+	// Initialize tracked items with batch info
+	const tracked: TrackedItem<T>[] = new Array(items.length)
+
+	batches.forEach((batch, batchIdx) => {
+		batch.items.forEach(({ index, request }) => {
+			tracked[index] = {
+				text: request.text,
+				label: request.label,
+				context: request.context as T,
+				status: "queued",
+				format: (params?.output_format ?? request.params?.output_format ?? "wav"),
+				startedAt: 0,
+				batchIndex: batchIdx,
+				batchTotal: totalBatches,
+			}
+		})
+	})
+
+	onInit?.(tracked)
 
 	// Submit all batches
 	const submittedBatches: { batch: Batch<T>; jobId: string }[] = []
@@ -133,12 +143,12 @@ export async function executeAll<T>(
 			for (const { index } of batch.items) {
 				tracked[index]!.status = "running"
 				tracked[index]!.startedAt = now
+				onStatusChange?.(tracked[index]!)
 			}
 
 			submittedBatches.push({ batch, jobId })
 
-			const itemLabels = batch.items.map((i) => i.request.label).join(", ")
-			console.log(`   🚀 Batch ${b + 1}/${totalBatches} → ${jobId} [${itemLabels}]`)
+			// console.log(`   🚀 Batch ${b + 1}/${totalBatches} → ${jobId} [${itemLabels}]`)
 
 			onBatchSubmit?.(jobId, batch.items.length)
 		} catch (err: unknown) {
@@ -148,13 +158,14 @@ export async function executeAll<T>(
 				tracked[index]!.error = error
 				tracked[index]!.completedAt = Date.now()
 				tracked[index]!.elapsed = Date.now() - now
+				onStatusChange?.(tracked[index]!)
 			}
 			console.error(`   ❌ Batch ${b + 1} submit failed: ${error.message}`)
 		}
 	}
 
 	// Poll all submitted batches concurrently
-	console.log(`\n⏳ Polling ${submittedBatches.length} job(s)...`)
+	// console.log(`\n⏳ Polling ${submittedBatches.length} job(s)...`)
 
 	await Promise.all(
 		submittedBatches.map(async ({ batch, jobId }) => {
@@ -185,6 +196,7 @@ export async function executeAll<T>(
 
 					item.completedAt = completedAt
 					item.elapsed = completedAt - item.startedAt
+					onStatusChange?.(item)
 
 					if (onProgress) await onProgress(item)
 				}
@@ -199,6 +211,7 @@ export async function executeAll<T>(
 					item.error = error
 					item.completedAt = completedAt
 					item.elapsed = completedAt - item.startedAt
+					onStatusChange?.(item)
 					if (onProgress) await onProgress(item)
 				}
 			}

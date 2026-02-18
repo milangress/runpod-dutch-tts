@@ -1,4 +1,4 @@
-import { runTest, writeOutput } from "./lib"
+import { runTest, runWithUI, writeOutput } from "./lib"
 
 const TEXTS = [
 	"[S1] Ik ga volgende week op vakantie naar Italië. Ik heb er echt zin in, vooral in het lekkere eten en de mooie steden. Heb jij nog tips for leuke plekken?",
@@ -17,9 +17,8 @@ const TEXTS = [
 ]
 
 runTest(async (client) => {
-	console.log(`📦 Batch TTS — ${TEXTS.length} texts`)
-
-	const results = await client.runAll(
+	await runWithUI(
+		client,
 		TEXTS.map((text, i) => ({
 			text,
 			label: `batch_${i}`,
@@ -34,12 +33,4 @@ runTest(async (client) => {
 			},
 		}
 	)
-
-	client.printSummary(results, (item) => ({
-		"#": item.context,
-		Time: item.elapsed ? `${(item.elapsed / 1000).toFixed(1)}s` : "—",
-		Size: item.audio ? `${(item.audio.length / 1024).toFixed(1)} KB` : "—",
-	}))
-
-	console.log(`\n🎧 Files saved in output/batch/`)
 })
