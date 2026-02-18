@@ -1,5 +1,5 @@
 
-import { RunPodError, runTest, writeOutput } from "./lib"
+import { runTest, writeOutput } from "./lib"
 
 const input = {
 	texts: ["[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen."],
@@ -17,18 +17,15 @@ runTest(async (client) => {
 	console.log(`   Text: "${input.texts[0]}"`)
 
 	const result = await client.run(input)
-	const audioBuffers = client.getAudio(result)
-	const audioBuffer = audioBuffers[0]
+	const [audioBuffer] = client.getAudio(result)
 
-	if (!audioBuffer) {
-		throw new RunPodError("No audio buffer returned from API")
-	}
-
+	// audioBuffer is guaranteed by getAudio() check
 	const format = result.output?.format || "wav"
 	const filename = `tts_${Date.now()}.${format}`
 
 	// Write output using helper
-	await writeOutput(filename, audioBuffer)
+	const file = await writeOutput(filename, audioBuffer!)
 
-	console.log(`✅ Audio saved. Format: ${format}`)
+	const sizeKB = (file.size / 1024).toFixed(1)
+	console.log(`✅ Audio saved: ${filename} (${sizeKB} KB). Format: ${format}`)
 })

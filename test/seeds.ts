@@ -34,26 +34,21 @@ runTest(async (client) => {
 				const elapsed = ((Date.now() - start) / 1000).toFixed(1)
 
 				const audioBuffers = client.getAudio(status)
-				const audioBuffer = audioBuffers[0]
-				const output = status.output
+				const audioBuffer = audioBuffers[0]! // Checked by getAudio()
+				const format = status.output?.format || "wav"
 
-				if (audioBuffer) {
-					const filename = `seed_${seed}.${output?.format || "wav"}`
+				const filename = `seed_${seed}.${format}`
 
-					// Use helper to write output
-					// We suppress the helper's log since we have custom logging here
-					const file = await writeOutput(`seeds/${filename}`, audioBuffer)
+				// Use helper to write output
+				const file = await writeOutput(`seeds/${filename}`, audioBuffer)
 
-					const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)
-					console.log(`   ✅ Seed ${String(seed).padEnd(6)} — ${elapsed}s — ${sizeKB} KB → ${filename}`)
-					return { seed, status: "ok", file: filename, size: `${sizeKB} KB`, elapsed: `${elapsed}s` }
-				} else {
-					console.log(`   ❌ Seed ${String(seed).padEnd(6)} — ${elapsed}s — no audio`)
-					return { seed, status: "no audio", elapsed: `${elapsed}s` }
-				}
-			} catch (err: any) {
+				const sizeKB = (file.size / 1024).toFixed(1)
+				console.log(`   ✅ Seed ${String(seed).padEnd(6)} — ${elapsed}s — ${sizeKB} KB → ${filename}`)
+				return { seed, status: "ok", file: filename, size: `${sizeKB} KB`, elapsed: `${elapsed}s` }
+			} catch (err: unknown) {
 				const elapsed = ((Date.now() - start) / 1000).toFixed(1)
-				console.log(`   ❌ Seed ${String(seed).padEnd(6)} — ${elapsed}s — FAILED: ${err.message || err}`)
+				const message = (err instanceof Error) ? err.message : String(err)
+				console.log(`   ❌ Seed ${String(seed).padEnd(6)} — ${elapsed}s — FAILED: ${message}`)
 				return { seed, status: "failed", elapsed: `${elapsed}s` }
 			}
 		})
@@ -65,7 +60,7 @@ runTest(async (client) => {
 	console.log("─".repeat(55))
 
 	results.sort((a, b) => a.seed - b.seed)
-	for (const r of results) {
+	results.forEach((r) => {
 		console.log(
 			String(r.seed).padEnd(10) +
 			r.status.padEnd(12) +
@@ -73,7 +68,7 @@ runTest(async (client) => {
 			(r.size || "—").padEnd(12) +
 			(r.file || "—")
 		)
-	}
+	})
 	console.log("─".repeat(55))
 	console.log(`\n🎧 Listen to the files in: output/seeds`)
 })

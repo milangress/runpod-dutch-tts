@@ -92,6 +92,7 @@ export class RunPodClient {
 
 	/**
 	 * Extracts audio buffers from a completed job response.
+	 * Guarantees at least one buffer or throws RunPodError.
 	 */
 	getAudio(response: RunPodStatusResponse): Buffer[] {
 		if (!response.output) {
@@ -101,6 +102,10 @@ export class RunPodClient {
 		const output = response.output
 		if (!output.audio || !Array.isArray(output.audio)) {
 			throw new RunPodError("Response output missing 'audio' array")
+		}
+
+		if (output.audio.length === 0) {
+			throw new RunPodError("API returned empty audio array")
 		}
 
 		return output.audio.map((b64, i) => {

@@ -1,7 +1,7 @@
 import { runTest, writeOutput } from "./lib"
 
 const TEXTS = [
-	"[S1] Ik ga volgende week op vakantie naar Italië. Ik heb er echt zin in, vooral in het lekkere eten en de mooie steden. Heb jij nog tips voor leuke plekken?",
+	"[S1] Ik ga volgende week op vakantie naar Italië. Ik heb er echt zin in, vooral in het lekkere eten en de mooie steden. Heb jij nog tips for leuke plekken?",
 	"[S1] Gisteren heb ik een nieuw pasta recept geprobeerd. Het was verrassend lekker, met veel verse kruiden en geroosterde groenten. Ik zal het recept later met je delen.",
 	"[S1] Heb je dat nieuwe boek al gelezen waar iedereen het over heeft? Ik ben er gisteren in begonnen en kon het bijna niet wegleggen. Het verhaal is zo spannend!",
 	"[S1] Mijn computer is de laatste tijd zo traag. Ik denk dat het tijd wordt voor een nieuwe, of misschien moet ik hem gewoon even opschonen. Heb jij verstand van computers?",
@@ -40,13 +40,13 @@ runTest(async (client) => {
 	const audioBuffers = client.getAudio(result)
 	console.log(`\n✅ Batch complete — ${audioBuffers.length} audio buffers`)
 
-	for (let i = 0; i < audioBuffers.length; i++) {
-		const audioBuffer = audioBuffers[i]
-		const filename = `batch_${i}.${result.output?.format || "wav"}`
+	const format = result.output?.format || "wav"
 
-		// Use helper to write output
-		await writeOutput(`batch/${filename}`, audioBuffer)
-	}
+	// Iterate using forEach
+	await Promise.all(audioBuffers.map(async (buffer, i) => {
+		const filename = `batch_${i}.${format}`
+		await writeOutput(`batch/${filename}`, buffer)
+	}))
 
-	console.log(`\n🎧 Files saved.`)
+	console.log(`\n🎧 Files saved in output/batch/`)
 })

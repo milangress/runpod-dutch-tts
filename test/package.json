@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "tsc": "bunx tsc --noEmit",
     "test": "bun run index.ts",
     "seeds": "bun run seeds.ts",
     "batch": "bun run batch.ts",
