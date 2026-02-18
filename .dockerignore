@@ -1,0 +1,7 @@
+test/
+.env
+.git
+.gitignore
+README.md
+__pycache__/
+*.py[cod]

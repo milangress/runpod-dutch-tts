@@ -9,3 +9,6 @@ build/
 *.flac
 /models/
 .venv/
+test/output/
+test/node_modules/
+test/bun.lock

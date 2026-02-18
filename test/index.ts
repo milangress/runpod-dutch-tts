@@ -1,0 +1,82 @@
+/**
+ * Test script for the RunPod Dutch TTS (Parkiet) endpoint.
+ *
+ * Usage:
+ *   cd test && bun install && bun run index.ts
+ *
+ * Requires .env in the repo root with:
+ *   RUNPOD_API_KEY=your_key
+ *   ENDPOINT_ID=your_endpoint_id
+ */
+
+import { mkdir, writeFile } from "fs/promises"
+import { join } from "path"
+import runpodSdk from "runpod-sdk"
+
+const { RUNPOD_API_KEY, ENDPOINT_ID } = process.env
+
+if (!RUNPOD_API_KEY || !ENDPOINT_ID) {
+	console.error("Missing RUNPOD_API_KEY or ENDPOINT_ID in environment.")
+	console.error("Make sure ../.env contains both variables.")
+	process.exit(1)
+}
+
+const runpod = runpodSdk(RUNPOD_API_KEY)
+const endpoint = runpod.endpoint(ENDPOINT_ID)
+
+const input = {
+	input: {
+		text: "[S1] hallo, hoe gaat het met je vandaag? [S2] het gaat goed, dankjewel. en met jou? [S1] ook goed, dankjewel voor het vragen.",
+		max_new_tokens: 3072,
+		guidance_scale: 3.0,
+		temperature: 0,
+		top_p: 0.9,
+		top_k: 50,
+		output_format: "wav",
+		seed: 42,
+	},
+}
+
+console.log("🎙️  Sending TTS request to RunPod...")
+console.log(`   Endpoint: ${ENDPOINT_ID}`)
+console.log(`   Text: "${input.input.text}"`)
+console.log()
+
+try {
+	const result = await endpoint.runSync(input)
+
+	if (result.status === "COMPLETED") {
+		const output = result.output
+
+		if (output.error) {
+			console.error("❌ Handler returned an error:", output.error)
+			process.exit(1)
+		}
+
+		if (!output.audio) {
+			console.error("❌ No audio in response:", JSON.stringify(output, null, 2))
+			process.exit(1)
+		}
+
+		// Decode base64 audio and save to file
+		const audioBuffer = Buffer.from(output.audio, "base64")
+		const outDir = join(import.meta.dir, "output")
+		await mkdir(outDir, { recursive: true })
+
+		const filename = `tts_${Date.now()}.${output.format || "wav"}`
+		const filepath = join(outDir, filename)
+
+		await writeFile(filepath, audioBuffer)
+
+		console.log(`✅ Audio saved to: ${filepath}`)
+		console.log(`   Format: ${output.format}`)
+		console.log(`   Size: ${(audioBuffer.byteLength / 1024).toFixed(1)} KB`)
+	} else {
+		console.error(`❌ Job did not complete successfully. Status: ${result.status}`)
+		console.error(JSON.stringify(result, null, 2))
+		process.exit(1)
+	}
+} catch (err) {
+	console.error("❌ Request failed:", err)
+	process.exit(1)
+}

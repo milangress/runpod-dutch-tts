@@ -1,0 +1,11 @@
+{
+	"name": "runpod-dutch-tts-test",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "bun run index.ts"
+	},
+	"dependencies": {
+		"runpod-sdk": "latest"
+	}
+}
