@@ -1,3 +1,4 @@
+
 import { join } from "path"
 import { RunPodClient } from "./client"
 
@@ -19,23 +20,26 @@ export async function runTest(fn: (client: RunPodClient) => Promise<void>) {
 }
 
 /**
- * Returns a file object pointing to `test/output/{subpath}`.
- * Ensure the directory structure exists before writing.
+ * Helper to write output files relative to `test/output`.
+ * Automatically ensures directories exist and logs the operation.
  */
-export function outDir(subpath: string) {
-	// Assuming this lib is in test/lib/, so import.meta.dir is test/lib
-	// We want test/output
+export async function writeOutput(subpath: string, data: string | Buffer | Uint8Array) {
 	const basePath = join(import.meta.dir, "..", "output")
-	return Bun.file(join(basePath, subpath))
-}
+	const filePath = join(basePath, subpath)
 
-/**
- * Ensures the directory for the given file path exists.
- * This is useful before writing to a file in a subdirectory.
- */
-export async function ensureDir(filePath: string) {
-	const dir = join(filePath, "..")
-	// Bun doesn't have mkdir yet, so we use node:fs
+	// Ensure directory exists
 	const { mkdir } = await import("node:fs/promises")
-	await mkdir(dir, { recursive: true })
+	await mkdir(join(filePath, ".."), { recursive: true })
+
+	const file = Bun.file(filePath)
+
+	// Write file using Bun
+	await Bun.write(file, data)
+
+
+	// Log result
+	const sizeKB = (file.size / 1024).toFixed(1)
+	console.log(`   ${subpath} — ${sizeKB} KB`)
+
+	return file
 }

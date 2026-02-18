@@ -1,7 +1,6 @@
 
 export interface RunPodJobInput {
-	text?: string
-	texts?: string[]
+	texts: string[]
 	audio_prompt?: string // base64
 	audio_prompt_transcript?: string
 	max_new_tokens?: number

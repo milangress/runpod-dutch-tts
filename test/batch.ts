@@ -1,5 +1,4 @@
-
-import { ensureDir, outDir, runTest } from "./lib"
+import { runTest, writeOutput } from "./lib"
 
 const TEXTS = [
 	"[S1] Ik ga volgende week op vakantie naar Italië. Ik heb er echt zin in, vooral in het lekkere eten en de mooie steden. Heb jij nog tips voor leuke plekken?",
@@ -51,19 +50,9 @@ runTest(async (client) => {
 		const audioBuffer = Buffer.from(audioBase64, "base64")
 		const filename = `batch_${i}.${output.format || "wav"}`
 
-		// Use helper to get the output file reference
-		// Subpath relative to test/output/
-		const file = outDir(`batch/${filename}`)
-
-		// Ensure the directory exists (test/output/batch/)
-		await ensureDir(file.name!)
-
-		// Write using Bun.write
-		await Bun.write(file, audioBuffer)
-
-		const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)
-		console.log(`   ${filename} — ${sizeKB} KB`)
+		// Use helper to write output
+		await writeOutput(`batch/${filename}`, audioBuffer)
 	}
 
-	console.log(`\n🎧 Files saved to: ${outDir("batch").name}`)
+	console.log(`\n🎧 Files saved.`)
 })

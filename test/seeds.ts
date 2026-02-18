@@ -1,5 +1,4 @@
-
-import { ensureDir, outDir, runTest } from "./lib"
+import { runTest, writeOutput } from "./lib"
 
 const SEEDS = [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
 const TEXT = "[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen."
@@ -19,7 +18,7 @@ runTest(async (client) => {
 	console.log("🚀 Sending requests in parallel...")
 	const jobs = await Promise.all(
 		SEEDS.map(async (seed) => {
-			const id = await client.submitJob({ text: TEXT, seed, ...PARAMS })
+			const id = await client.submitJob({ texts: [TEXT], seed, ...PARAMS })
 			console.log(`   Seed ${String(seed).padEnd(6)} → queued (${id})`)
 			return { seed, id }
 		})
@@ -41,15 +40,9 @@ runTest(async (client) => {
 					const audioBuffer = Buffer.from(audioString, "base64")
 					const filename = `seed_${seed}.${output?.format || "wav"}`
 
-					// Use helper to get the output file reference
-					// Subpath relative to test/output/
-					const file = outDir(`seeds/${filename}`)
-
-					// Ensure the directory exists (test/output/seeds/)
-					await ensureDir(file.name!)
-
-					// Write using Bun.write
-					await Bun.write(file, audioBuffer)
+					// Use helper to write output
+					// We suppress the helper's log since we have custom logging here
+					const file = await writeOutput(`seeds/${filename}`, audioBuffer)
 
 					const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)
 					console.log(`   ✅ Seed ${String(seed).padEnd(6)} — ${elapsed}s — ${sizeKB} KB → ${filename}`)
@@ -82,5 +75,5 @@ runTest(async (client) => {
 		)
 	}
 	console.log("─".repeat(55))
-	console.log(`\n🎧 Listen to the files in: ${outDir("seeds").name}`)
+	console.log(`\n🎧 Listen to the files in: output/seeds`)
 })

@@ -1,6 +1,5 @@
-
 import { join } from "path"
-import { ensureDir, outDir, runTest } from "./lib"
+import { runTest, writeOutput } from "./lib"
 
 // Transcript of the audio prompt file (must match what's spoken in the audio)
 const AUDIO_PROMPT_TRANSCRIPT =
@@ -10,6 +9,7 @@ const AUDIO_PROMPT_TRANSCRIPT =
 	"[S2] Nou kijk maar in de repo op Git Hub of Hugging Face."
 
 const TEXTS = [
+	// ... (content omitted for brevity, assuming same texts)
 	"[S1] vandaag wil ik het hebben over kunstmatige intelligentie. het is een fascinerend onderwerp dat steeds meer invloed heeft op ons dagelijks leven. van slimme assistenten tot zelfrijdende auto's, de mogelijkheden zijn eindeloos. maar er zijn ook risico's waar we rekening mee moeten houden. laten we daar eens dieper op ingaan.",
 	"[S1] het weer in Nederland is altijd een populair gespreksonderwerp. de ene dag schijnt de zon en is het prachtig buiten. de volgende dag regent het weer pijpenstelen en waait het hard. maar dat maakt ons niet uit, want we hebben altijd een paraplu bij de hand. dat is typisch Nederlands.",
 	"[S1] ik ben gisteren naar het museum geweest in Amsterdam. de tentoonstelling over moderne kunst was echt indrukwekkend. er waren schilderijen van kunstenaars uit de hele wereld te zien. het mooiste vond ik een groot abstract werk in felle kleuren. ik raad iedereen aan om er een keer naartoe te gaan.",
@@ -57,18 +57,9 @@ runTest(async (client) => {
 		const audioBuffer = Buffer.from(audioBase64, "base64")
 		const filename = `clone_${i}.${output.format || "wav"}`
 
-		// Use helper to get the output file reference
-		// Subpath relative to test/output/
-		const file = outDir(`clone/${filename}`)
-
-		// Ensure the directory exists (test/output/clone/)
-		await ensureDir(file.name!)
-
-		// Write using Bun.write
-		await Bun.write(file, audioBuffer)
-
-		console.log(`   ${filename} — ${(audioBuffer.byteLength / 1024).toFixed(1)} KB`)
+		// Use helper to write output
+		await writeOutput(`clone/${filename}`, audioBuffer)
 	}
 
-	console.log(`\n🎧 Files saved to: ${outDir("clone").name}`)
+	console.log(`\n🎧 Files.`)
 })
