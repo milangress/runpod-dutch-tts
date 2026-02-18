@@ -484,26 +484,31 @@ def handler(job: dict) -> dict:
 
     Returns: { "audio": ["<b64>", ...], "format": "wav", "count": N }
     """
-    # 1. Parse input
-    params = parse_input(job["input"])
-    if isinstance(params, dict):
-        logger.error(f"Input validation error: {params}")
-        return params  # error
+    try:
+        # 1. Parse input
+        params = parse_input(job["input"])
+        if isinstance(params, dict):
+            logger.error(f"Input validation error: {params}")
+            return params  # error
 
-    # 2. Resolve voice cloning (if requested)
-    error = resolve_voice_cloning(params)
-    if error:
-        logger.error(f"Voice cloning resolution error: {error}")
-        return error
+        # 2. Resolve voice cloning (if requested)
+        error = resolve_voice_cloning(params)
+        if error:
+            logger.error(f"Voice cloning resolution error: {error}")
+            return error
 
-    # 3. Generate speech
-    result = generate_speech(params)
-    if isinstance(result, dict):
-        return result  # error
+        # 3. Generate speech
+        result = generate_speech(params)
+        if isinstance(result, dict):
+            return result  # error
 
-    # 4. Format response
-    logger.info(f"Generated {len(result)} audio clip(s)")
-    return {"audio": result, "format": params.output_format, "count": len(result)}
+        # 4. Format response
+        logger.info(f"Generated {len(result)} audio clip(s)")
+        return {"audio": result, "format": params.output_format, "count": len(result)}
+
+    except Exception as e:
+        logger.critical(f"Unhandled exception in handler: {e}", exc_info=True)
+        return {"error": f"Internal handler error: {str(e)}"}
 
 
 runpod.serverless.start({"handler": handler})
