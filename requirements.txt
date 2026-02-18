@@ -8,7 +8,6 @@ huggingface-hub>=0.30.2
 
 # Audio I/O
 soundfile>=0.13.1
-descript-audio-codec>=1.0.0
 
 # Numerical
 numpy>=1.24.0
