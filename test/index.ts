@@ -30,10 +30,10 @@ const input = {
 		max_new_tokens: 3072,
 		guidance_scale: 3.0,
 		temperature: 0,
-		top_p: 0.9,
-		top_k: 50,
+		top_p: 0.8,
+		top_k: 30,
 		output_format: "wav",
-		seed: 42,
+		seed: 420,
 	},
 }
 
