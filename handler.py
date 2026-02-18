@@ -24,6 +24,9 @@ import logging
 # Prevent Hugging Face from checking for updates or connecting to the Hub
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+# Silence HTTP request logs from underlying libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 import random
 import re
@@ -47,8 +50,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")
 
 print(f"Loading model '{MODEL_ID}' on device '{DEVICE}' ...")
-processor = AutoProcessor.from_pretrained(MODEL_ID, local_files_only=True)
-model = DiaForConditionalGeneration.from_pretrained(MODEL_ID, local_files_only=True).to(DEVICE)
+processor = AutoProcessor.from_pretrained(MODEL_ID)
+model = DiaForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE)
 SAMPLE_RATE: int = processor.feature_extractor.sampling_rate
 print(f"Model loaded successfully. Sample rate: {SAMPLE_RATE}")
 
