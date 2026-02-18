@@ -28,10 +28,6 @@ from transformers import AutoProcessor, DiaForConditionalGeneration
 MODEL_ID = os.environ.get("MODEL_ID", "pevers/parkiet")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Use only the pre-cached model from the Docker image (no network calls)
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-
 print(f"Loading model '{MODEL_ID}' on device '{DEVICE}' ...")
 processor = AutoProcessor.from_pretrained(MODEL_ID)
 model = DiaForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE)
