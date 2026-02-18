@@ -15,11 +15,10 @@ runTest(async (client) => {
 		}
 	)
 
-	if (result!.status === "completed" && result!.audio) {
+	if (result!.status === "COMPLETED" && result!.audio) {
 		const filename = `tts_${Date.now()}.${result!.format}`
 		const file = await writeOutput(filename, result!.audio)
-		const sizeKB = (file.size / 1024).toFixed(1)
-		console.log(`✅ Audio saved: ${filename} (${sizeKB} KB)`)
+		console.log(`✅ Audio saved: ${filename} (${file.sizeKB} KB)`)
 	} else {
 		console.error(`❌ Failed: ${result!.error?.message}`)
 	}
