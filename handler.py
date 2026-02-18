@@ -155,11 +155,47 @@ def handler(job):
     audio_prompt_len = None
 
     if audio_prompt_b64:
-        # Voice cloning mode: prepend transcript to each text, pass audio to processor
+        # -- Validate voice cloning inputs --
+        if not audio_prompt_transcript:
+            print("⚠️  WARNING: audio_prompt provided without audio_prompt_transcript. "
+                  "Voice cloning works best when the transcript matches the audio prompt.")
+
+        # Validate audio prompt size (base64 string)
+        prompt_size_kb = len(audio_prompt_b64) * 3 / 4 / 1024  # approx decoded size
+        print(f"🎤 Voice cloning mode:")
+        print(f"   Audio prompt size: ~{prompt_size_kb:.1f} KB (base64)")
+        print(f"   Transcript: {'provided (' + str(len(audio_prompt_transcript)) + ' chars)' if audio_prompt_transcript else 'MISSING'}")
+        print(f"   Batch size: {len(input_texts)} text(s)")
+
+        # Decode and validate audio
+        try:
+            audio_array = load_audio_from_b64(audio_prompt_b64)
+        except Exception as e:
+            return {"error": f"Failed to decode audio_prompt: {e}"}
+
+        # Validate the decoded audio
+        duration_s = len(audio_array) / SAMPLE_RATE
+        print(f"   Decoded audio: {len(audio_array)} samples, {duration_s:.2f}s @ {SAMPLE_RATE} Hz")
+        print(f"   Audio range: [{audio_array.min():.4f}, {audio_array.max():.4f}], dtype={audio_array.dtype}")
+
+        if len(audio_array) == 0:
+            return {"error": "Audio prompt decoded to zero samples. Check the audio file."}
+
+        if duration_s < 3:
+            print(f"   ⚠️  WARNING: Audio prompt is very short ({duration_s:.2f}s). "
+                  "Voice cloning may not work well with prompts under 3 seconds.")
+
+        if duration_s > 15:
+            print(f"   ⚠️  WARNING: Audio prompt is very long ({duration_s:.2f}s). "
+                  "This may cause memory issues. Consider using a 5-15 second clip.")
+
+        # Check for silence / corrupt audio (all zeros or near-zero)
+        if np.abs(audio_array).max() < 1e-6:
+            return {"error": "Audio prompt appears to be silent (all zeros). Check the audio file."}
+
+        # Voice cloning mode: prepend transcript to each text
         if audio_prompt_transcript:
             input_texts = [audio_prompt_transcript + " " + t for t in input_texts]
-
-        audio_array = load_audio_from_b64(audio_prompt_b64)
 
         # Processor expects one audio sample per text — duplicate for batch
         audio_batch = [audio_array] * len(input_texts) if len(input_texts) > 1 else audio_array
@@ -171,6 +207,7 @@ def handler(job):
             return_tensors="pt",
         ).to(DEVICE)
         audio_prompt_len = processor.get_audio_prompt_len(inputs["decoder_attention_mask"])
+        print(f"   Audio prompt len (tokens): {audio_prompt_len}")
     else:
         # Standard TTS mode: text only
         inputs = processor(text=input_texts, padding=True, return_tensors="pt").to(DEVICE)
