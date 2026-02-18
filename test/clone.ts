@@ -91,7 +91,7 @@ console.log(`   Job ID: ${id}`)
 // Poll for completion
 let done = false
 while (!done) {
-	const status = await endpoint.status(id)
+	const status = (await endpoint.status(id)) as any
 
 	if (status.status === "COMPLETED") {
 		done = true
@@ -107,7 +107,7 @@ while (!done) {
 		console.log(`\n✅ Voice cloning batch complete in ${elapsed}s — ${audioList.length} files`)
 
 		for (let i = 0; i < audioList.length; i++) {
-			const audioBuffer = Buffer.from(audioList[i], "base64")
+			const audioBuffer = Buffer.from(audioList[i]!, "base64")
 			const filename = `clone_${i}.${output.format || "wav"}`
 			await writeFile(join(outDir, filename), audioBuffer)
 			const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)

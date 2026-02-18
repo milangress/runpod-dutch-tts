@@ -67,7 +67,7 @@ while (pending.size > 0) {
 		if (!pending.has(job.seed)) continue
 
 		try {
-			const status = await endpoint.status(job.id)
+			const status = (await endpoint.status(job.id)) as any
 
 			if (status.status === "COMPLETED") {
 				pending.delete(job.seed)

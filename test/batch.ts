@@ -59,7 +59,7 @@ console.log(`   Job ID: ${id}`)
 // Poll for completion
 let done = false
 while (!done) {
-	const status = await endpoint.status(id)
+	const status = (await endpoint.status(id)) as any
 
 	if (status.status === "COMPLETED") {
 		done = true
@@ -75,7 +75,7 @@ while (!done) {
 		console.log(`\n✅ Batch complete in ${elapsed}s — ${audioList.length} audio files`)
 
 		for (let i = 0; i < audioList.length; i++) {
-			const audioBuffer = Buffer.from(audioList[i], "base64")
+			const audioBuffer = Buffer.from(audioList[i]!, "base64")
 			const filename = `batch_${i}.${output.format || "wav"}`
 			await writeFile(join(outDir, filename), audioBuffer)
 			const sizeKB = (audioBuffer.byteLength / 1024).toFixed(1)
@@ -85,7 +85,7 @@ while (!done) {
 		console.log(`\n🎧 Files saved to: ${outDir}`)
 	} else if (status.status === "FAILED") {
 		done = true
-		console.error(`\n❌ Job failed:`, status.error || status)
+		console.error(`\n❌ Job failed:`, (status as any).error || status)
 		process.exit(1)
 	} else {
 		process.stdout.write(`   ⏳ ${status.status}...\r`)
