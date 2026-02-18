@@ -11,6 +11,7 @@ Supports both single-text and batch requests:
 
 import base64
 import io
+import json
 import os
 import re
 import random
@@ -34,6 +35,42 @@ processor = AutoProcessor.from_pretrained(MODEL_ID)
 model = DiaForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE)
 SAMPLE_RATE = processor.feature_extractor.sampling_rate
 print(f"Model loaded successfully. Sample rate: {SAMPLE_RATE}")
+
+# ---------------------------------------------------------------------------
+# Preset voices — loaded once at cold-start from /voices/voices.json
+# ---------------------------------------------------------------------------
+VOICES_DIR = os.environ.get("VOICES_DIR", "/voices")
+VOICES_MANIFEST = os.path.join(VOICES_DIR, "voices.json")
+PRESET_VOICES: dict = {}  # { "F1": { "audio": np.ndarray, "transcript": str, "name": str }, ... }
+
+if os.path.exists(VOICES_MANIFEST):
+    with open(VOICES_MANIFEST) as f:
+        manifest = json.load(f)
+
+    for voice_id, meta in manifest.items():
+        wav_path = os.path.join(VOICES_DIR, meta["file"])
+        if not os.path.exists(wav_path):
+            print(f"⚠️  Voice '{voice_id}': file '{wav_path}' not found, skipping.")
+            continue
+
+        waveform, sr = torchaudio.load(wav_path)
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        if sr != SAMPLE_RATE:
+            waveform = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SAMPLE_RATE)(waveform)
+        audio_np = waveform.squeeze(0).numpy()
+
+        PRESET_VOICES[voice_id] = {
+            "audio": audio_np,
+            "transcript": meta.get("transcript", ""),
+            "name": meta.get("name", voice_id),
+        }
+        duration = len(audio_np) / SAMPLE_RATE
+        print(f"   ✅ Voice '{voice_id}' ({meta.get('name', voice_id)}): {duration:.1f}s, {len(audio_np)} samples")
+
+    print(f"Loaded {len(PRESET_VOICES)} preset voice(s): {list(PRESET_VOICES.keys())}")
+else:
+    print(f"No voices manifest found at {VOICES_MANIFEST}, preset voices disabled.")
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +143,8 @@ def handler(job):
         seed            (int|null)       — Random seed for reproducibility.
         output_format   (str, "wav")     — Output audio format (wav / mp3 / flac).
 
-    Voice cloning (add to single or batch):
+    Voice cloning — either use a preset voice or provide your own audio:
+        voice                     (str)  — Preset voice ID (e.g. "F1", "M1"). Overrides audio_prompt.
         audio_prompt              (str)  — Base64-encoded audio file (wav/mp3/flac) to clone voice from.
         audio_prompt_transcript   (str)  — Transcript of the audio prompt. This is prepended
                                            to text/texts automatically so the model knows
@@ -150,9 +188,23 @@ def handler(job):
     top_p = float(job_input.get("top_p", 0.90))
     top_k = int(job_input.get("top_k", 50))
     seed = job_input.get("seed")
+    voice = job_input.get("voice")  # preset voice ID
     audio_prompt_b64 = job_input.get("audio_prompt")
     audio_prompt_transcript = job_input.get("audio_prompt_transcript", "")
     output_format = job_input.get("output_format", "wav").lower()
+
+    # -- Resolve preset voice (overrides audio_prompt / transcript) --
+    if voice:
+        voice_upper = voice.upper()
+        if voice_upper not in PRESET_VOICES:
+            available = list(PRESET_VOICES.keys()) if PRESET_VOICES else ["none loaded"]
+            return {"error": f"Unknown voice '{voice}'. Available: {available}"}
+        preset = PRESET_VOICES[voice_upper]
+        print(f"🎤 Using preset voice: {voice_upper} ({preset['name']})")
+        # Set audio + transcript from preset (can be overridden by explicit audio_prompt_transcript)
+        audio_prompt_b64 = "__preset__"  # sentinel so voice cloning branch activates
+        if not audio_prompt_transcript:
+            audio_prompt_transcript = preset["transcript"]
 
     # -- Seed --
     if seed is not None:
@@ -175,14 +227,20 @@ def handler(job):
         print(f"   Batch size: {len(input_texts)} text(s)")
 
         # Decode and validate audio
-        try:
-            audio_array = load_audio_from_b64(audio_prompt_b64)
-        except Exception as e:
-            return {"error": f"Failed to decode audio_prompt: {e}"}
+        if voice:
+            # Use pre-loaded audio from preset
+            audio_array = PRESET_VOICES[voice.upper()]["audio"]
+            duration_s = len(audio_array) / SAMPLE_RATE
+            print(f"   Using preset audio: {len(audio_array)} samples, {duration_s:.2f}s @ {SAMPLE_RATE} Hz")
+        else:
+            try:
+                audio_array = load_audio_from_b64(audio_prompt_b64)
+            except Exception as e:
+                return {"error": f"Failed to decode audio_prompt: {e}"}
 
-        # Validate the decoded audio
-        duration_s = len(audio_array) / SAMPLE_RATE
-        print(f"   Decoded audio: {len(audio_array)} samples, {duration_s:.2f}s @ {SAMPLE_RATE} Hz")
+            # Validate the decoded audio
+            duration_s = len(audio_array) / SAMPLE_RATE
+            print(f"   Decoded audio: {len(audio_array)} samples, {duration_s:.2f}s @ {SAMPLE_RATE} Hz")
         print(f"   Audio range: [{audio_array.min():.4f}, {audio_array.max():.4f}], dtype={audio_array.dtype}")
 
         if len(audio_array) == 0:
