@@ -2,8 +2,10 @@
 import { join } from "path"
 import { RunPodClient } from "./client"
 
+export { concatenateWavBuffers, loadAudioPrompt } from "./audio"
 export { RunPodClient } from "./client"
 export * from "./config"
+export { printSummary } from "./display"
 export * from "./errors"
 export * from "./types"
 
@@ -35,7 +37,6 @@ export async function writeOutput(subpath: string, data: string | Buffer | Uint8
 
 	// Write file using Bun
 	await Bun.write(file, data)
-
 
 	// Log result
 	const sizeKB = (file.size / 1024).toFixed(1)

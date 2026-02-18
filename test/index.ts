@@ -1,31 +1,26 @@
-
 import { runTest, writeOutput } from "./lib"
 
-const input = {
-	texts: ["[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen."],
-	max_new_tokens: 3072,
-	guidance_scale: 3.0,
-	temperature: 0,
-	top_p: 0.8,
-	top_k: 30,
-	output_format: "wav",
-	seed: 30,
-}
+const TEXT = "[S1] hallo, hoe gaat het met je vandaag? het gaat goed, dankjewel. en met jou? ook goed, dankjewel voor het vragen."
 
 runTest(async (client) => {
-	console.log("🎙️  Sending TTS request...")
-	console.log(`   Text: "${input.texts[0]}"`)
+	console.log("🎙️  Single TTS request")
 
-	const result = await client.run(input)
-	const [audioBuffer] = client.getAudio(result)
+	const [result] = await client.runAll(
+		[{
+			text: TEXT,
+			label: "tts_test",
+		}],
+		{
+			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 0, top_p: 0.8, top_k: 30, seed: 30 },
+		}
+	)
 
-	// audioBuffer is guaranteed by getAudio() check
-	const format = result.output?.format || "wav"
-	const filename = `tts_${Date.now()}.${format}`
-
-	// Write output using helper
-	const file = await writeOutput(filename, audioBuffer!)
-
-	const sizeKB = (file.size / 1024).toFixed(1)
-	console.log(`✅ Audio saved: ${filename} (${sizeKB} KB). Format: ${format}`)
+	if (result!.status === "completed" && result!.audio) {
+		const filename = `tts_${Date.now()}.${result!.format}`
+		const file = await writeOutput(filename, result!.audio)
+		const sizeKB = (file.size / 1024).toFixed(1)
+		console.log(`✅ Audio saved: ${filename} (${sizeKB} KB)`)
+	} else {
+		console.error(`❌ Failed: ${result!.error?.message}`)
+	}
 })

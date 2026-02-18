@@ -1,7 +1,5 @@
-import { join } from "path"
 import { runTest, writeOutput } from "./lib"
 
-// Transcript of the audio prompt file (must match what's spoken in the audio)
 const AUDIO_PROMPT_TRANSCRIPT =
 	"[S1] Denk je dat je een open source model kan trainen met weinig geld en middelen? " +
 	"[S2] Ja ik denk het wel. " +
@@ -15,42 +13,33 @@ const TEXTS = [
 	"[S1] koken is een van mijn favoriete hobby's. elke avond probeer ik iets nieuws te maken in de keuken. gisteren heb ik een heerlijke stamppot gemaakt met boerenkool en rookworst. het recept komt van mijn oma en het smaakt altijd fantastisch. de geur van verse kruiden maakt het helemaal af.",
 ]
 
-const PARAMS = {
-	max_new_tokens: 3072,
-	guidance_scale: 3.0,
-	temperature: 1,
-	top_p: 0.95,
-	top_k: 50,
-	output_format: "wav",
-	seed: 30,
-}
-
 runTest(async (client) => {
-	const audioPromptFile = Bun.file(join(import.meta.dir, "audio-prompt.wav"))
+	const audioPrompt = await client.loadAudioPrompt("audio-prompt.wav")
 
-	console.log(`🎤 Voice cloning batch test — ${TEXTS.length} texts`)
-	console.log(`   Audio prompt: ${audioPromptFile.name}`)
-	console.log(`   Transcript:   "${AUDIO_PROMPT_TRANSCRIPT}"`)
+	console.log(`🎤 Voice cloning — ${TEXTS.length} texts`)
 
-	const audioBytes = await audioPromptFile.arrayBuffer()
-	const audioB64 = Buffer.from(audioBytes).toString("base64")
+	const results = await client.runAll(
+		TEXTS.map((text, i) => ({
+			text,
+			label: `clone_${i}`,
+			context: i,
+			audioPrompt: audioPrompt.base64,
+			audioPromptTranscript: AUDIO_PROMPT_TRANSCRIPT,
+		})),
+		{
+			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 1, top_p: 0.95, top_k: 50, seed: 30 },
+			onProgress: async (item) => {
+				if (item.status === "completed" && item.audio) {
+					await writeOutput(`clone/clone_${item.context}.${item.format}`, item.audio)
+				}
+			},
+		}
+	)
 
-	console.log("\n🚀 Sending voice cloning request...")
-	const result = await client.run({
-		texts: TEXTS,
-		audio_prompt: audioB64,
-		audio_prompt_transcript: AUDIO_PROMPT_TRANSCRIPT,
-		...PARAMS,
-	})
-
-	const audioBuffers = client.getAudio(result)
-	console.log(`\n✅ Cloning complete — ${audioBuffers.length} audio buffers`)
-
-	const format = result.output?.format || "wav"
-
-	await Promise.all(audioBuffers.map(async (buffer, i) => {
-		const filename = `clone_${i}.${format}`
-		await writeOutput(`clone/${filename}`, buffer)
+	client.printSummary(results, (item) => ({
+		"#": item.context,
+		Time: item.elapsed ? `${(item.elapsed / 1000).toFixed(1)}s` : "—",
+		Size: item.audio ? `${(item.audio.length / 1024).toFixed(1)} KB` : "—",
 	}))
 
 	console.log(`\n🎧 Files saved in output/clone/`)

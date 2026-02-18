@@ -16,36 +16,29 @@ const TEXTS = [
 	"[S1] Wat zijn jouw plannen voor het weekend? Ik ga zaterdag naar de markt en zondag waarschijnlijk even rustig aan doen. Misschien ga ik nog even naar het strand als het weer goed is.",
 ]
 
-const PARAMS = {
-	max_new_tokens: 3072,
-	guidance_scale: 3.0,
-	temperature: 0,
-	top_p: 0.8,
-	top_k: 30,
-	output_format: "wav",
-	seed: 30,
-}
-
 runTest(async (client) => {
-	console.log(`📦 Batch TTS — ${TEXTS.length} texts in one request`)
-	TEXTS.forEach((t, i) => console.log(`   [${i}] "${t}"`))
-	console.log()
+	console.log(`📦 Batch TTS — ${TEXTS.length} texts`)
 
-	console.log("🚀 Sending batch request...")
-	const result = await client.run({
-		texts: TEXTS,
-		...PARAMS,
-	})
+	const results = await client.runAll(
+		TEXTS.map((text, i) => ({
+			text,
+			label: `batch_${i}`,
+			context: i,
+		})),
+		{
+			params: { max_new_tokens: 3072, guidance_scale: 3.0, temperature: 0, top_p: 0.8, top_k: 30, seed: 30 },
+			onProgress: async (item) => {
+				if (item.status === "completed" && item.audio) {
+					await writeOutput(`batch/batch_${item.context}.${item.format}`, item.audio)
+				}
+			},
+		}
+	)
 
-	const audioBuffers = client.getAudio(result)
-	console.log(`\n✅ Batch complete — ${audioBuffers.length} audio buffers`)
-
-	const format = result.output?.format || "wav"
-
-	// Iterate using forEach
-	await Promise.all(audioBuffers.map(async (buffer, i) => {
-		const filename = `batch_${i}.${format}`
-		await writeOutput(`batch/${filename}`, buffer)
+	client.printSummary(results, (item) => ({
+		"#": item.context,
+		Time: item.elapsed ? `${(item.elapsed / 1000).toFixed(1)}s` : "—",
+		Size: item.audio ? `${(item.audio.length / 1024).toFixed(1)} KB` : "—",
 	}))
 
 	console.log(`\n🎧 Files saved in output/batch/`)
