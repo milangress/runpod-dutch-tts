@@ -2,7 +2,6 @@
 runpod~=1.7.9
 
 # Model inference (HF Transformers)
-# NOTE: torch is installed separately in Dockerfile with CUDA index
 transformers>=4.56.2
 huggingface-hub>=0.30.2
 
