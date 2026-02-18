@@ -170,7 +170,12 @@ export async function executeAll<T>(
 	await Promise.all(
 		submittedBatches.map(async ({ batch, jobId }) => {
 			try {
-				const response = await pollJob(endpoint, jobId, TIMEOUT_MS)
+				const response = await pollJob(endpoint, jobId, TIMEOUT_MS, (status) => {
+					for (const { index } of batch.items) {
+						tracked[index]!.runpodStatus = status
+						onStatusChange?.(tracked[index]!)
+					}
+				})
 				activeJobs.delete(jobId)
 
 				const output = response.output
@@ -227,12 +232,14 @@ export async function executeAll<T>(
 async function pollJob(
 	endpoint: Endpoint,
 	jobId: string,
-	timeoutMs: number
+	timeoutMs: number,
+	onStatusUpdate?: (status: string) => void
 ): Promise<RunPodStatusResponse> {
 	const start = Date.now()
 
 	while (Date.now() - start < timeoutMs) {
 		const status = (await endpoint.status(jobId)) as RunPodStatusResponse
+		onStatusUpdate?.(status.status)
 
 		// Check for application-level errors in output
 		if (status.output && typeof status.output === "object" && "error" in status.output) {

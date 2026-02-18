@@ -99,6 +99,9 @@ export interface TrackedItem<T = void> {
 	batchIndex?: number
 	/** Total number of batches */
 	batchTotal?: number
+
+	/** Raw status from RunPod (e.g. "IN_QUEUE", "IN_PROGRESS", "COMPLETED") */
+	runpodStatus?: string
 }
 
 /** Options for client.runAll() */

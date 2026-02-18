@@ -55,10 +55,17 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	// Header
 	let icon: any = "•"
 	let color = "gray"
+	let statusText = isQueued ? "queued" : isRunning ? "running" : isCompleted ? "done" : "failed"
 
 	if (isRunning) {
 		icon = <Spinner type="dots" />
 		color = "cyan"
+		// Check for specific runpod status
+		const rawStatus = items.find((i) => i.runpodStatus)?.runpodStatus
+		if (rawStatus) {
+			statusText = rawStatus
+			if (rawStatus === "IN_QUEUE") color = "magenta"
+		}
 	} else if (isFailed) {
 		icon = "✖"
 		color = "red"
@@ -71,11 +78,11 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	const duration = elapsed > 0 ? `  ++ took ${(elapsed / 1000).toFixed(1)} s` : ""
 
 	return (
-		<Box flexDirection="column" marginBottom={1}>
+		<Box flexDirection="column">
 			<Box>
 				<Text color={color}>{icon} </Text>
 				<Text bold color={color}>Batch {index + 1}/{total}</Text>
-				<Text color="dim"> [{isQueued ? "queued" : isRunning ? "running" : isCompleted ? "done" : "failed"}]</Text>
+				<Text color="dim"> [{statusText}]</Text>
 				{isCompleted && <Text color="dim">{duration}</Text>}
 			</Box>
 
