@@ -52,6 +52,18 @@ from transformers import AutoProcessor, DiaForConditionalGeneration
 
 
 # ---------------------------------------------------------------------------
+# Error Handling
+# ---------------------------------------------------------------------------
+
+class AppError(Exception):
+    """Custom exception for structured API errors."""
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(message)
+
+
+# ---------------------------------------------------------------------------
 # Initialisation — runs once at cold-start
 # ---------------------------------------------------------------------------
 
@@ -88,7 +100,10 @@ def _load_waveform(waveform: torch.Tensor, sr: int) -> np.ndarray:
 
 def load_audio_from_b64(b64_audio: str) -> np.ndarray:
     """Decode a base64 audio string to a numpy array at the model's sample rate."""
-    audio_bytes = base64.b64decode(b64_audio)
+    try:
+        audio_bytes = base64.b64decode(b64_audio)
+    except Exception as e:
+        raise AppError("AUDIO_DECODING_FAILED", f"Invalid base64 string: {e}")
 
     # Create temp file without keeping it open, so torchaudio can open it safely
     f = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
@@ -101,6 +116,8 @@ def load_audio_from_b64(b64_audio: str) -> np.ndarray:
 
         waveform, sr = torchaudio.load(tmp_path)
         return _load_waveform(waveform, sr)
+    except Exception as e:
+        raise AppError("AUDIO_DECODING_FAILED", f"Failed to decode audio file: {e}")
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -229,21 +246,19 @@ class JobParams:
         return self.voice is not None or self.audio_prompt_b64 is not None
 
 
-def parse_input(job_input: dict) -> JobParams | dict:
+def parse_input(job_input: dict) -> JobParams:
     """
     Parse raw job input into a JobParams dataclass.
-    Returns an error dict if validation fails.
+    Raises AppError if validation fails.
     """
     texts = job_input.get("texts")
 
-    if texts and isinstance(texts, list):
-        input_texts = texts
-    else:
-        return {"error": "Missing required field 'texts' (list of strings)."}
+    if not texts or not isinstance(texts, list):
+        raise AppError("INVALID_INPUT", "Missing required field 'texts' (list of strings).")
 
 
     # Ensure every text starts with a speaker tag
-    input_texts = [ensure_speaker_tag(t) for t in input_texts]
+    input_texts = [ensure_speaker_tag(t) for t in texts]
 
     # Validate numeric inputs
     try:
@@ -253,14 +268,14 @@ def parse_input(job_input: dict) -> JobParams | dict:
         top_p = float(job_input.get("top_p", 0.90))
         top_k = int(job_input.get("top_k", 50))
     except (ValueError, TypeError) as e:
-        return {"error": f"Invalid numeric parameter: {e}. Check max_new_tokens, guidance_scale, temperature, top_p, top_k."}
+        raise AppError("INVALID_INPUT", f"Invalid numeric parameter: {e}. Check max_new_tokens, guidance_scale, temperature, top_p, top_k.")
 
     seed = job_input.get("seed")
     if seed is not None:
         try:
             seed = int(seed)
         except (ValueError, TypeError):
-             return {"error": f"Invalid seed value '{seed}': must be an integer."}
+             raise AppError("INVALID_INPUT", f"Invalid seed value '{seed}': must be an integer.")
 
     return JobParams(
         input_texts=input_texts,
@@ -281,17 +296,17 @@ def parse_input(job_input: dict) -> JobParams | dict:
 # Voice cloning resolution
 # ---------------------------------------------------------------------------
 
-def resolve_voice_cloning(params: JobParams) -> dict | None:
+def resolve_voice_cloning(params: JobParams) -> None:
     """
     Resolve the voice cloning audio + transcript onto params.
-    Mutates params in-place. Returns an error dict if something's wrong, else None.
+    Mutates params in-place. Raises AppError if something's wrong.
     """
     # ── Preset voice ────────────────────────────────────────────
     if params.voice:
         voice_key = params.voice.upper()
         if voice_key not in PRESET_VOICES:
             available = list(PRESET_VOICES.keys()) or ["none loaded"]
-            return {"error": f"Unknown voice '{params.voice}'. Available: {available}"}
+            raise AppError("VOICE_NOT_FOUND", f"Unknown voice '{params.voice}'. Available: {available}")
 
         preset = PRESET_VOICES[voice_key]
         logger.info(f"Using preset voice: {voice_key} ({preset.name})")
@@ -302,14 +317,11 @@ def resolve_voice_cloning(params: JobParams) -> dict | None:
 
     # ── Custom audio prompt ─────────────────────────────────────
     elif params.audio_prompt_b64:
-        try:
-            params.audio_array = load_audio_from_b64(params.audio_prompt_b64)
-        except Exception as e:
-            return {"error": f"Failed to decode audio_prompt: {e}"}
+        params.audio_array = load_audio_from_b64(params.audio_prompt_b64)
 
     # ── No voice cloning ────────────────────────────────────────
     else:
-        return None
+        return
 
     # ── Validate the resolved audio ─────────────────────────────
     audio = params.audio_array
@@ -318,10 +330,10 @@ def resolve_voice_cloning(params: JobParams) -> dict | None:
     logger.debug(f"Voice cloning mode: {len(audio)} samples, {duration_s:.2f}s @ {SAMPLE_RATE} Hz")
 
     if len(audio) == 0:
-        return {"error": "Audio prompt decoded to zero samples. Check the audio file."}
+        raise AppError("AUDIO_QUALITY_ISSUE", "Audio prompt decoded to zero samples. Check the audio file.")
 
     if np.abs(audio).max() < 1e-6:
-        return {"error": "Audio prompt appears to be silent (all zeros). Check the audio file."}
+        raise AppError("AUDIO_QUALITY_ISSUE", "Audio prompt appears to be silent (all zeros). Check the audio file.")
 
     if duration_s < 3:
         logger.warning(f"Audio prompt is very short ({duration_s:.2f}s). Voice cloning may not work well with prompts under 3 seconds.")
@@ -407,10 +419,10 @@ def log_settings(params: JobParams, audio_prompt_len: int | None) -> None:
     logger.info(f"Settings: {json.dumps(settings)}")
 
 
-def generate_speech(params: JobParams) -> list[str] | dict:
+def generate_speech(params: JobParams) -> list[str]:
     """
     Run the TTS/voice-cloning pipeline and return a list of base64-encoded
-    audio strings, or an error dict.
+    audio strings. Raises AppError on failure.
     """
     # ── Prepare processor inputs ────────────────────────────────
     audio_prompt_len = None
@@ -450,10 +462,10 @@ def generate_speech(params: JobParams) -> list[str] | dict:
         audio_list = processor.batch_decode(outputs, audio_prompt_len=audio_prompt_len)
     except torch.cuda.OutOfMemoryError:
         logger.error("GPU out of memory")
-        return {"error": "GPU out of memory. Try reducing batch size or text length."}
+        raise AppError("GPU_OOM", "GPU out of memory. Try reducing batch size or text length.")
     except Exception as e:
         logger.error(f"Generation failed: {e}", exc_info=True)
-        return {"error": f"Generation failed: {e}"}
+        raise AppError("GENERATION_FAILED", f"Generation failed: {e}")
 
     # ── Encode to base64 ────────────────────────────────────────
     return [tensor_to_base64(a, SAMPLE_RATE, fmt=params.output_format) for a in audio_list]
@@ -487,28 +499,24 @@ def handler(job: dict) -> dict:
     try:
         # 1. Parse input
         params = parse_input(job["input"])
-        if isinstance(params, dict):
-            logger.error(f"Input validation error: {params}")
-            return params  # error
 
         # 2. Resolve voice cloning (if requested)
-        error = resolve_voice_cloning(params)
-        if error:
-            logger.error(f"Voice cloning resolution error: {error}")
-            return error
+        resolve_voice_cloning(params)
 
         # 3. Generate speech
         result = generate_speech(params)
-        if isinstance(result, dict):
-            return result  # error
 
         # 4. Format response
         logger.info(f"Generated {len(result)} audio clip(s)")
         return {"audio": result, "format": params.output_format, "count": len(result)}
 
+    except AppError as e:
+        logger.error(f"AppError: [{e.code}] {e.message}")
+        return {"error": e.message, "code": e.code}
+
     except Exception as e:
         logger.critical(f"Unhandled exception in handler: {e}", exc_info=True)
-        return {"error": f"Internal handler error: {str(e)}"}
+        return {"error": f"Internal handler error: {str(e)}", "code": "INTERNAL_ERROR"}
 
 
 runpod.serverless.start({"handler": handler})
