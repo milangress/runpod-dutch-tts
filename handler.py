@@ -258,12 +258,20 @@ def handler(job):
         if np.abs(audio_array).max() < 1e-6:
             return {"error": "Audio prompt appears to be silent (all zeros). Check the audio file."}
 
-        # Voice cloning mode: prepend transcript to each text, strip duplicate speaker tags
+        # Voice cloning mode: prepend transcript to each text.
+        # Strip redundant leading speaker tag from text if it matches the
+        # last speaker in the transcript (avoids e.g. "[S1] ...transcript... [S1] text")
         if audio_prompt_transcript:
-            input_texts = [
-                re.sub(r'(\[S\d+\])\s*\1', r'\1', audio_prompt_transcript + " " + t)
-                for t in input_texts
-            ]
+            last_tag_match = re.findall(r'\[S\d+\]', audio_prompt_transcript)
+            last_tag = last_tag_match[-1] if last_tag_match else None
+
+            merged = []
+            for t in input_texts:
+                # If the text starts with the same speaker tag as the transcript ends with, strip it
+                if last_tag and t.strip().startswith(last_tag):
+                    t = t.strip()[len(last_tag):].lstrip()
+                merged.append(audio_prompt_transcript + " " + t)
+            input_texts = merged
 
         # Processor expects one audio sample per text — duplicate for batch
         audio_batch = [audio_array] * len(input_texts) if len(input_texts) > 1 else audio_array
