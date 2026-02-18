@@ -1,8 +1,8 @@
 /**
  * Voice cloning test — uses an audio prompt to clone a voice.
  *
- * The text must include the transcript of the audio prompt FIRST,
- * followed by the new text you want generated in that voice.
+ * Sends text + audio_prompt + audio_prompt_transcript to the handler.
+ * The handler prepends the transcript to the text internally.
  *
  * Usage:
  *   cd test && bun run clone
@@ -33,13 +33,10 @@ const AUDIO_PROMPT_TRANSCRIPT =
 	"[S1] oh ja, hoe dan? " +
 	"[S2] nou kijk maar in de repo op Git Hub of Hugging Face."
 
-// New text to generate in the cloned voice (appended to the transcript)
-const NEW_TEXT =
-	" [S1] dat klinkt interessant, ik ga het zeker proberen. " +
+// New text to generate in the cloned voice
+const TEXT =
+	"[S1] dat klinkt interessant, ik ga het zeker proberen. " +
 	"[S2] ja doe dat, het is echt heel makkelijk."
-
-// Full text = transcript + new text (the model continues from where the audio ends)
-const FULL_TEXT = AUDIO_PROMPT_TRANSCRIPT + NEW_TEXT
 
 const AUDIO_PROMPT_FILE = join(import.meta.dir, "audio-prompt.mp3")
 
@@ -60,7 +57,7 @@ await mkdir(outDir, { recursive: true })
 console.log("🎤 Voice cloning test")
 console.log(`   Audio prompt: ${AUDIO_PROMPT_FILE}`)
 console.log(`   Transcript:   "${AUDIO_PROMPT_TRANSCRIPT}"`)
-console.log(`   New text:     "${NEW_TEXT}"`)
+console.log(`   New text:     "${TEXT}"`)
 console.log()
 
 // Read and base64-encode the audio prompt
@@ -74,8 +71,9 @@ const start = Date.now()
 console.log("\n🚀 Sending voice cloning request...")
 const result = await endpoint.run({
 	input: {
-		text: FULL_TEXT,
+		text: TEXT,
 		audio_prompt: audioB64,
+		audio_prompt_transcript: AUDIO_PROMPT_TRANSCRIPT,
 		...PARAMS,
 	},
 })

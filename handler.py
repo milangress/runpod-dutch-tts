@@ -110,10 +110,10 @@ def handler(job):
         output_format   (str, "wav")     — Output audio format (wav / mp3 / flac).
 
     Voice cloning (add to single or batch):
-        audio_prompt    (str)            — Base64-encoded audio file (wav/mp3/flac) to clone voice from.
-        Note: Your text must start with the transcript of the audio prompt,
-              followed by the new text you want generated in that voice.
-              Example: "<transcript of audio_prompt> <new text to generate>"
+        audio_prompt              (str)  — Base64-encoded audio file (wav/mp3/flac) to clone voice from.
+        audio_prompt_transcript   (str)  — Transcript of the audio prompt. This is prepended
+                                           to text/texts automatically so the model knows
+                                           where the prompt voice ends and generation starts.
 
     Input schema (batch):
         texts           (list[str], required) — List of texts to synthesise in one batch.
@@ -148,6 +148,7 @@ def handler(job):
     top_k = int(job_input.get("top_k", 50))
     seed = job_input.get("seed")
     audio_prompt_b64 = job_input.get("audio_prompt")
+    audio_prompt_transcript = job_input.get("audio_prompt_transcript", "")
     output_format = job_input.get("output_format", "wav").lower()
 
     # -- Seed --
@@ -158,7 +159,10 @@ def handler(job):
     audio_prompt_len = None
 
     if audio_prompt_b64:
-        # Voice cloning mode: pass audio to processor
+        # Voice cloning mode: prepend transcript to each text, pass audio to processor
+        if audio_prompt_transcript:
+            input_texts = [audio_prompt_transcript + " " + t for t in input_texts]
+
         audio_array = load_audio_from_b64(audio_prompt_b64)
         inputs = processor(
             text=input_texts,
