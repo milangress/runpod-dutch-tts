@@ -178,6 +178,18 @@ export async function executeAll<T>(
 				})
 				activeJobs.delete(jobId)
 
+				if (response.status === "CANCELLED" || response.status === "TERMINATED") {
+					const completedAt = Date.now()
+					for (const { index } of batch.items) {
+						tracked[index]!.status = "cancelled"
+						tracked[index]!.error = new Error("Job cancelled")
+						tracked[index]!.completedAt = completedAt
+						tracked[index]!.elapsed = completedAt - tracked[index]!.startedAt
+						onStatusChange?.(tracked[index]!)
+					}
+					return
+				}
+
 				const output = response.output
 				if (!output || !output.audio || !Array.isArray(output.audio)) {
 					throw new RunPodError(`Job ${jobId}: missing audio in response`)
@@ -246,7 +258,7 @@ async function pollJob(
 			throw new JobFailedError(jobId, `Application error: ${status.output.error}`)
 		}
 
-		if (status.status === "COMPLETED") {
+		if (status.status === "COMPLETED" || status.status === "CANCELLED" || status.status === "TERMINATED") {
 			return status
 		}
 

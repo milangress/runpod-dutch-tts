@@ -1,4 +1,4 @@
-import { Box, render, Text } from "ink"
+import { Box, render, Text, useApp, useInput } from "ink"
 import Spinner from "ink-spinner"
 import { useEffect, useState } from "react"
 import type { RunPodClient } from "./client"
@@ -11,12 +11,14 @@ const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
 		item.status === "completed" ? "green" :
 		item.status === "failed" ? "red" :
 		item.status === "running" ? "cyan" :
+		item.status === "cancelled" ? "yellow" :
 		"gray"
 
 	const icon =
 		item.status === "completed" ? "✔" :
 		item.status === "failed" ? "✖" :
 		item.status === "running" ? <Spinner type="dots" /> :
+		item.status === "cancelled" ? "⊘" :
 		"•"
 
 	const label = <Text color={statusColor} bold={item.status === "running"}>{item.label}</Text>
@@ -35,9 +37,12 @@ const ItemRow = ({ item }: { item: TrackedItem<any> }) => {
 				{item.status === "failed" && item.error && (
 					<Text color="red">  → {item.error.message}</Text>
 				)}
+				{item.status === "cancelled" && (
+					<Text color="dim">  → cancelled</Text>
+				)}
 			</Box>
 			{/* Show text snippet for running/finished/failed */}
-			{item.status !== "queued" && (
+			{item.status !== "queued" && item.status !== "cancelled" && (
 				<Box marginLeft={2}>
 					<Text color="dim">→ "{snippet}"</Text>
 				</Box>
@@ -50,21 +55,22 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	const isFailed = items.some((i) => i.status === "failed")
 	const isCompleted = items.every((i) => i.status === "completed")
 	const isQueued = items.every((i) => i.status === "queued")
+	const isCancelled = items.every((i) => i.status === "cancelled")
 
 	// Check if this batch is effectively running (submitted to RunPod)
 	const isSubmitted = items.some((i) => i.status === "running")
-	const isRunning = isSubmitted && !isFailed && !isCompleted
+	const isRunning = isSubmitted && !isFailed && !isCompleted && !isCancelled
 
 	// Determine specific RunPod status (shared by items in batch)
 	const rawStatus = isRunning ? items.find((i) => i.runpodStatus)?.runpodStatus : undefined
 
 	// Expansion logic: Only expand if IN_PROGRESS, COMPLETED, or FAILED
-	const showItems = isFailed || isCompleted || (isRunning && rawStatus === "IN_PROGRESS")
+	const showItems = isFailed || isCompleted || isCancelled || (isRunning && rawStatus === "IN_PROGRESS")
 
 	// Header Logic
 	let icon: any = "•"
 	let color = "gray"
-	let statusText = isQueued ? "queued" : isCompleted ? "done" : isFailed ? "failed" : "queued" // Default to queued if running but no status
+	let statusText = isQueued ? "queued" : isCompleted ? "done" : isFailed ? "failed" : isCancelled ? "cancelled" : "queued"
 
 	if (isRunning) {
 		// If we have a raw status, use it
@@ -89,6 +95,9 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	} else if (isCompleted) {
 		icon = "✔"
 		color = "green"
+	} else if (isCancelled) {
+		icon = "⊘"
+		color = "yellow"
 	}
 
 	const elapsed = items.reduce((max, i) => Math.max(max, i.elapsed || 0), 0)
@@ -114,7 +123,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	)
 }
 
-const ProgressUI = ({ items, error }: { items: TrackedItem<any>[], error?: Error }) => {
+const ProgressUI = ({ items, error, cancelling }: { items: TrackedItem<any>[], error?: Error, cancelling?: boolean }) => {
 	// Group items by batch index
 	const batches = new Map<number, TrackedItem<any>[]>()
 
@@ -138,8 +147,9 @@ const ProgressUI = ({ items, error }: { items: TrackedItem<any>[], error?: Error
 				<BatchGroup key={idx} index={idx} total={totalBatches} items={batchItems} />
 			))}
 
-			<Box marginTop={1} borderStyle="round" borderColor={failed > 0 ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
+			<Box marginTop={1} borderStyle="round" borderColor={cancelling ? "yellow" : failed > 0 ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
 				<Text>
+					{cancelling ? <Text color="yellow" bold>Stopping... (Ctrl+C to force)  |  </Text> : null}
 					Total: {total}  |
 					<Text color="green"> ✔ {completed}</Text>  |
 					<Text color="red"> ✖ {failed}</Text>
@@ -166,6 +176,23 @@ export async function runWithUI<T>(
 		const Wrapper = () => {
 			const [trackedItems, setTrackedItems] = useState<TrackedItem<T>[]>([])
 			const [error, setError] = useState<Error>()
+			const [cancelling, setCancelling] = useState(false)
+			const { exit } = useApp()
+
+			useInput((input, key) => {
+				if (input === "c" && key.ctrl) {
+					if (!cancelling) {
+						setCancelling(true)
+						client.cancelAll().catch((err) => {
+							setError(err)
+						})
+						// Don't exit yet, wait for tracker updates
+					} else {
+						// Force exit
+						process.exit(1)
+					}
+				}
+			})
 
 			useEffect(() => {
 				let mounted = true
@@ -177,15 +204,15 @@ export async function runWithUI<T>(
 					},
 					onStatusChange: (item) => {
 						if (!mounted) return
-						// Force update
 						setTrackedItems((prev) => [...prev])
 					},
 				}).then((final) => {
 					if (!mounted) return
 					setTrackedItems([...final])
 					setTimeout(() => {
-                        resolve(final)
-                    }, 500)
+						// If we were cancelling, we resolve with partial results
+						resolve(final)
+					}, 500)
 				}).catch((err) => {
 					if (mounted) setError(err)
 					reject(err)
@@ -194,7 +221,7 @@ export async function runWithUI<T>(
 				return () => { mounted = false }
 			}, [])
 
-			return <ProgressUI items={trackedItems} error={error} />
+			return <ProgressUI items={trackedItems} error={error} cancelling={cancelling} />
 		}
 
 		const { unmount } = render(<Wrapper />)

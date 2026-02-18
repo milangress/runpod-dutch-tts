@@ -31,13 +31,6 @@ export class RunPodClient {
 		}
 
 		this.endpoint = endpoint as Endpoint
-
-		// Handle cancellation
-		process.on("SIGINT", async () => {
-			console.log("\n\n🛑 Interrupted! Canceling active jobs...")
-			await this.cancelAll()
-			process.exit(1)
-		})
 	}
 
 	// ── High-level API ──────────────────────────────────────────

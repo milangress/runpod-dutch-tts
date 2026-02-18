@@ -21,7 +21,7 @@ export interface RunPodJobOutput {
 	error?: string
 }
 
-export type RunPodJobStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT"
+export type RunPodJobStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT" | "TERMINATED"
 
 export interface RunPodStatusResponse {
 	id: string
@@ -80,8 +80,8 @@ export interface TrackedItem<T = void> {
 	label: string
 	/** User-attached context */
 	context: T
-	/** Current status */
-	status: "queued" | "running" | "completed" | "failed"
+	/** Current status of the item */
+	status: "queued" | "running" | "completed" | "failed" | "cancelled"
 	/** Decoded audio buffer (set on completion) */
 	audio?: Buffer
 	/** Audio format (e.g. "wav") */
