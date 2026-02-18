@@ -1,5 +1,5 @@
 {
-  "name": "runpod-dutch-tts-test",
+  "name": "runpod-dutch-tts-cli",
   "private": true,
   "type": "module",
   "scripts": {
