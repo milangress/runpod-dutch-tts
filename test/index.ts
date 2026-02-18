@@ -50,6 +50,10 @@ try {
 	const result = await endpoint.runSync(input)
 
 	if (result.status === "COMPLETED") {
+		if (!result.output) {
+			console.error("❌ No output in result")
+			process.exit(1)
+		}
 		const output = result.output
 
 		if (output.error) {

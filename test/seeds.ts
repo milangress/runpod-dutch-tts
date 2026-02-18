@@ -20,7 +20,11 @@ if (!RUNPOD_API_KEY || !ENDPOINT_ID) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const runpod = runpodSdk(RUNPOD_API_KEY)
-const endpoint = runpod.endpoint(ENDPOINT_ID)!
+const endpoint = runpod.endpoint(ENDPOINT_ID)
+if (!endpoint) {
+	console.error(`Missing endpoint for ID: ${ENDPOINT_ID}`)
+	process.exit(1)
+}
 
 // ── Configuration ──────────────────────────────────────────────────
 const SEEDS = [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]

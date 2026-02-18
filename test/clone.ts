@@ -22,7 +22,12 @@ if (!RUNPOD_API_KEY || !ENDPOINT_ID) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const runpod = runpodSdk(RUNPOD_API_KEY)
-const endpoint = runpod.endpoint(ENDPOINT_ID)!
+const endpoint = runpod.endpoint(ENDPOINT_ID)
+
+if (!endpoint) {
+	console.error(`Failed to get endpoint for ID: ${ENDPOINT_ID}`)
+	process.exit(1)
+}
 
 // ── Configuration ──────────────────────────────────────────────────
 
@@ -85,7 +90,12 @@ const result = await endpoint.run({
 	},
 })
 
-const id = result.id!
+const id = result.id
+if (!id) {
+	console.error("Missing job ID in result:", result)
+	process.exit(1)
+}
+
 console.log(`   Job ID: ${id}`)
 
 // Poll for completion
