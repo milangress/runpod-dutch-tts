@@ -13,11 +13,13 @@ import base64
 import io
 import os
 import random
+import tempfile
 
 import numpy as np
 import runpod
 import soundfile as sf
 import torch
+import torchaudio
 from transformers import AutoProcessor, DiaForConditionalGeneration
 
 # ---------------------------------------------------------------------------
@@ -33,7 +35,8 @@ os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 print(f"Loading model '{MODEL_ID}' on device '{DEVICE}' ...")
 processor = AutoProcessor.from_pretrained(MODEL_ID)
 model = DiaForConditionalGeneration.from_pretrained(MODEL_ID).to(DEVICE)
-print("Model loaded successfully.")
+SAMPLE_RATE = processor.feature_extractor.sampling_rate
+print(f"Model loaded successfully. Sample rate: {SAMPLE_RATE}")
 
 
 # ---------------------------------------------------------------------------
@@ -51,27 +54,42 @@ def set_seed(seed: int):
     torch.backends.cudnn.benchmark = False
 
 
-def decode_audio_prompt(b64_audio: str) -> str:
-    """Decode a base64 WAV string and write it to a temp file, return the path."""
+def load_audio_from_b64(b64_audio: str) -> np.ndarray:
+    """
+    Decode a base64 audio string (wav/mp3/flac) to a numpy array at the
+    model's expected sample rate (44100 Hz).
+    """
     audio_bytes = base64.b64decode(b64_audio)
-    tmp_path = "/tmp/audio_prompt.wav"
-    with open(tmp_path, "wb") as f:
+
+    # Write to temp file so torchaudio can detect format (supports mp3, wav, flac, etc.)
+    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as f:
         f.write(audio_bytes)
-    return tmp_path
+        tmp_path = f.name
 
+    try:
+        waveform, sr = torchaudio.load(tmp_path)
 
-def audio_to_base64(audio_array: np.ndarray, sample_rate: int, fmt: str = "wav") -> str:
-    """Encode a numpy audio array to a base64 string."""
-    buf = io.BytesIO()
-    sf.write(buf, audio_array, sample_rate, format=fmt.upper())
-    buf.seek(0)
-    return base64.b64encode(buf.read()).decode("utf-8")
+        # Convert stereo to mono if needed
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+
+        # Resample to model's expected rate if needed
+        if sr != SAMPLE_RATE:
+            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=SAMPLE_RATE)
+            waveform = resampler(waveform)
+
+        return waveform.squeeze(0).numpy()
+    finally:
+        os.remove(tmp_path)
 
 
 def tensor_to_base64(audio_tensor, sample_rate: int, fmt: str = "wav") -> str:
     """Convert a torch.Tensor audio waveform to a base64 string."""
     audio_np = audio_tensor.cpu().float().numpy()
-    return audio_to_base64(audio_np, sample_rate, fmt=fmt)
+    buf = io.BytesIO()
+    sf.write(buf, audio_np, sample_rate, format=fmt.upper())
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +107,13 @@ def handler(job):
         top_p           (float, 0.90)    — Nucleus sampling probability.
         top_k           (int, 50)        — Top-k sampling.
         seed            (int|null)       — Random seed for reproducibility.
-        audio_prompt    (str|null)       — Base64-encoded WAV for voice cloning.
         output_format   (str, "wav")     — Output audio format (wav / mp3 / flac).
+
+    Voice cloning (add to single or batch):
+        audio_prompt    (str)            — Base64-encoded audio file (wav/mp3/flac) to clone voice from.
+        Note: Your text must start with the transcript of the audio prompt,
+              followed by the new text you want generated in that voice.
+              Example: "<transcript of audio_prompt> <new text to generate>"
 
     Input schema (batch):
         texts           (list[str], required) — List of texts to synthesise in one batch.
@@ -131,13 +154,22 @@ def handler(job):
     if seed is not None:
         set_seed(int(seed))
 
-    # -- Prepare text input (processor accepts list[str]) --
-    inputs = processor(text=input_texts, padding=True, return_tensors="pt").to(DEVICE)
+    # -- Prepare inputs (with or without audio prompt for voice cloning) --
+    audio_prompt_len = None
 
-    # -- Voice cloning (audio prompt) --
-    audio_prompt_path = None
     if audio_prompt_b64:
-        audio_prompt_path = decode_audio_prompt(audio_prompt_b64)
+        # Voice cloning mode: pass audio to processor
+        audio_array = load_audio_from_b64(audio_prompt_b64)
+        inputs = processor(
+            text=input_texts,
+            audio=audio_array,
+            padding=True,
+            return_tensors="pt",
+        ).to(DEVICE)
+        audio_prompt_len = processor.get_audio_prompt_len(inputs["decoder_attention_mask"])
+    else:
+        # Standard TTS mode: text only
+        inputs = processor(text=input_texts, padding=True, return_tensors="pt").to(DEVICE)
 
     # -- Generation --
     generate_kwargs = {
@@ -148,27 +180,18 @@ def handler(job):
         "top_k": top_k,
     }
 
-    if audio_prompt_path is not None:
-        generate_kwargs["audio_prompt"] = audio_prompt_path
-
     with torch.no_grad():
         outputs = model.generate(**inputs, **generate_kwargs)
 
     # -- Decode audio (returns list[torch.Tensor], one per input text) --
-    audio_list = processor.batch_decode(outputs)
-
-    # Get sample rate from processor config
-    sample_rate = processor.feature_extractor.sampling_rate
+    # Pass audio_prompt_len so batch_decode strips the prompt audio from output
+    audio_list = processor.batch_decode(outputs, audio_prompt_len=audio_prompt_len)
 
     # -- Encode outputs to base64 --
     audio_b64_list = [
-        tensor_to_base64(audio, sample_rate, fmt=output_format)
+        tensor_to_base64(audio, SAMPLE_RATE, fmt=output_format)
         for audio in audio_list
     ]
-
-    # -- Cleanup --
-    if audio_prompt_path and os.path.exists(audio_prompt_path):
-        os.remove(audio_prompt_path)
 
     # -- Return single or batch response --
     if is_batch:
