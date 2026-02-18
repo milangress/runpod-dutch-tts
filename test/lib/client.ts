@@ -136,6 +136,7 @@ export class RunPodClient {
 	}
 
 	async cancelJob(id: string) {
+		console.log(`   ⛔ Canceling job ${id}...`)
 		if (!this.activeJobs.has(id)) return
 		try {
 			await this.endpoint.cancel(id)
@@ -147,6 +148,7 @@ export class RunPodClient {
 	}
 
 	async cancelAll() {
+		console.log(`   ⛔ Canceling all ${this.activeJobs.size} active jobs...`)
 		const jobs = Array.from(this.activeJobs)
 		if (jobs.length === 0) return
 		await Promise.all(jobs.map((id) => this.cancelJob(id)))
