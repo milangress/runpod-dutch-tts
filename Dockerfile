@@ -7,8 +7,8 @@ RUN uv pip install --upgrade -r /requirements.txt --no-cache-dir --system --brea
 ENV HF_HUB_DISABLE_PROGRESS_BARS=1
 
 # Add preset voices and handler
-ADD voices/ /voices/
-ADD handler.py /handler.py
+COPY voices/ /voices/
+COPY handler.py /handler.py
 
 # Run the handler
 CMD ["python", "-u", "/handler.py"]
