@@ -5,6 +5,7 @@ COPY requirements.txt /requirements.txt
 RUN uv pip install --upgrade -r /requirements.txt --no-cache-dir --system --break-system-packages
 
 ENV HF_HUB_DISABLE_PROGRESS_BARS=1
+ENV HF_DATASETS_OFFLINE=0
 
 # Add preset voices and handler
 COPY voices/ /voices/
