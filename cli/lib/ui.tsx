@@ -58,7 +58,7 @@ const ItemRow = ({ item, isParentFinal }: { item: TrackedItem<any>, isParentFina
 	)
 }
 
-const BatchGroup = ({ index, total, items }: { index: number, total: number, items: TrackedItem<any>[] }) => {
+const BatchGroup = ({ index, total, items, isGroupExpanded }: { index: number, total: number, items: TrackedItem<any>[], isGroupExpanded?: boolean }) => {
 	// Status checks
 	const isFailed = items.some((i) => i.status === "FAILED" || i.status === "TIMED_OUT")
 	const isCompleted = items.every((i) => i.status === "COMPLETED")
@@ -68,8 +68,8 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	const isRunning = items.some((i) => i.status === "IN_PROGRESS")
 	const isQueued = !isFinal && !isRunning
 
-	// Expansion logic: Only expand if IN_PROGRESS or FINAL
-	const showItems = isFinal || isRunning
+	// Expansion logic: Expand if Running, Failed, or Completed (reverted to original behavior per user request)
+	const showItems = isFinal || (isRunning && isGroupExpanded)
 
 	// Header Logic
 	let icon: any = "•"
@@ -107,7 +107,7 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	const duration = elapsed > 0 ? ` took ${(elapsed / 1000).toFixed(1)}s` : ""
 
 	return (
-		<Box flexDirection="column">
+		<Box flexDirection="column" marginLeft={2}>
 			<Box>
 				<Text color={color}>{icon} </Text>
 				<Text bold color={color}>Batch {index + 1}/{total}</Text>
@@ -126,10 +126,9 @@ const BatchGroup = ({ index, total, items }: { index: number, total: number, ite
 	)
 }
 
-const ProgressUI = ({ items, error, cancelling, cancelError }: { items: TrackedItem<any>[], error?: Error, cancelling?: boolean, cancelError?: Error }) => {
+const StoryGroup = ({ group, items }: { group: string, items: TrackedItem<any>[] }) => {
 	// Group items by batch index
 	const batches = new Map<number, TrackedItem<any>[]>()
-
 	items.forEach(item => {
 		const idx = item.batchIndex ?? 0
 		if (!batches.has(idx)) batches.set(idx, [])
@@ -137,14 +136,58 @@ const ProgressUI = ({ items, error, cancelling, cancelError }: { items: TrackedI
 	})
 
 	const sortedBatches = Array.from(batches.entries()).sort((a, b) => a[0] - b[0])
-	const totalBatches = items.length > 0 ? (items[0]?.batchTotal ?? sortedBatches.length) : 0
+	const totalBatches = items.length > 0 ? (items[0]?.batchTotal ?? sortedBatches.length) : sortedBatches.length
 
-	// Logic for Static vs Dynamic
+	const totalChunks = items.length
+	const completedChunks = items.filter(i => i.status === "COMPLETED").length
+	const isDone = completedChunks === totalChunks && totalChunks > 0
+
+	const isStarted = items.some(i => i.status !== "PENDING" && i.status !== "IN_QUEUE")
+
+	// If not started, just show the header
+	if (!isStarted) {
+		return (
+			<Box flexDirection="column" marginBottom={0}>
+				<Text color="dim">{group} (waiting)</Text>
+			</Box>
+		)
+	}
+
+	return (
+		<Box flexDirection="column" marginBottom={1}>
+			<Text bold color={isDone ? "green" : "white"}>{group}</Text>
+			{/* Only show chunk count if active/done */}
+			<Box marginLeft={2}>
+				<Text color="dim">→ {totalChunks} chunk(s)</Text>
+			</Box>
+			{sortedBatches.map(([idx, batchItems]) => (
+				<BatchGroup key={idx} index={idx} total={totalBatches} items={batchItems} isGroupExpanded={!isDone} />
+			))}
+		</Box>
+	)
+}
+
+const ProgressUI = ({ items, error, cancelling, cancelError }: { items: TrackedItem<any>[], error?: Error, cancelling?: boolean, cancelError?: Error }) => {
+	// Group items by 'group' (Story)
+	const groups = new Map<string, TrackedItem<any>[]>()
+	// Fallback group for items without a group
+	const DEFAULT_GROUP = "General"
+
+	items.forEach(item => {
+		const g = item.group ?? DEFAULT_GROUP
+		if (!groups.has(g)) groups.set(g, [])
+		groups.get(g)!.push(item)
+	})
+
+	const sortedGroups = Array.from(groups.entries())
+
+	// 1. Identify "Done" groups for Static rendering
+	// A group is done if ALL items are Final (Completed/Failed/Cancelled)
+	// AND we have output paths for completed items (to ensure metadata is ready)
 	let lastDoneIndex = -1
-	for (let i = 0; i < sortedBatches.length; i++) {
-		const [_, batchItems] = sortedBatches[i]!
-		// Batch is done if all items are final AND metadata is loaded for completed ones
-		const isDone = batchItems.every(item => {
+	for (let i = 0; i < sortedGroups.length; i++) {
+		const [_, groupItems] = sortedGroups[i]!
+		const isGroupDone = groupItems.every(item => {
 			const isFinalStatus =
 				item.status === "COMPLETED" ||
 				item.status === "FAILED" ||
@@ -153,21 +196,38 @@ const ProgressUI = ({ items, error, cancelling, cancelError }: { items: TrackedI
 				item.status === "LOCAL_CANCELLED"
 
 			if (!isFinalStatus) return false
-
-			// If completed, we want the metadata (path/duration) before freezing in Static
 			if (item.status === "COMPLETED" && !item.outputPath) return false
-
 			return true
 		})
-		if (isDone) {
+
+		if (isGroupDone) {
 			lastDoneIndex = i
 		} else {
 			break
 		}
 	}
 
-	const doneBatches = sortedBatches.slice(0, lastDoneIndex + 1)
-	const activeBatches = sortedBatches.slice(lastDoneIndex + 1)
+	const doneGroups = sortedGroups.slice(0, lastDoneIndex + 1)
+	const remainingGroups = sortedGroups.slice(lastDoneIndex + 1)
+
+	// 2. Filter "Remaining" groups to show Active + First Pending
+	const visibleActiveGroups: typeof sortedGroups = []
+	let foundFirstPending = false
+
+	for (const group of remainingGroups) {
+		const [_, groupItems] = group
+		const isStarted = groupItems.some(i => i.status !== "PENDING" && i.status !== "IN_QUEUE")
+
+		if (isStarted) {
+			visibleActiveGroups.push(group)
+		} else {
+			if (!foundFirstPending) {
+				visibleActiveGroups.push(group)
+				foundFirstPending = true
+			}
+			// Stop adding subsequent pending groups
+		}
+	}
 
 	// Stats
 	const completed = items.filter(i => i.status === "COMPLETED").length
@@ -176,26 +236,26 @@ const ProgressUI = ({ items, error, cancelling, cancelError }: { items: TrackedI
 
 	return (
 		<>
-			<Static items={doneBatches}>
-				{([idx, batchItems]) => (
-					<Box key={idx} marginBottom={0}>
-						<BatchGroup index={idx} total={totalBatches} items={batchItems} />
+			{/* Static Section for Completed Stories */}
+			<Static items={doneGroups}>
+				{([groupName, groupItems]) => (
+					<Box key={groupName} marginBottom={1}>
+						<StoryGroup group={groupName} items={groupItems} />
 					</Box>
 				)}
 			</Static>
 
+			{/* Active / Pending Section */}
 			<Box flexDirection="column">
-				{activeBatches.map(([idx, batchItems]) => (
-					<Box key={idx} marginBottom={0}>
-						<BatchGroup index={idx} total={totalBatches} items={batchItems} />
-					</Box>
+				{visibleActiveGroups.map(([groupName, groupItems]) => (
+					<StoryGroup key={groupName} group={groupName} items={groupItems} />
 				))}
 
-				<Box borderStyle="round" borderColor={cancelling ? "yellow" : (failed > 0 || cancelError) ? "red" : completed === total ? "green" : "gray"} paddingX={1}>
+				<Box borderStyle="round" borderColor={cancelling ? "yellow" : (failed > 0 || cancelError) ? "red" : completed === total ? "green" : "gray"} paddingX={1} marginTop={1}>
 					<Text>
 						{cancelling ? <Text color="yellow" bold>Stopping... (Ctrl+C to force)  |  </Text> : null}
 						{cancelError ? <Text color="red" bold>Stop failed: {cancelError.message} (Ctrl+C to force)  |  </Text> : null}
-						Total: {total}  |
+						Total Strings: {total}  |
 						<Text color="green"> ✔ {completed}</Text>  |
 						<Text color="red"> ✖ {failed}</Text>
 					</Text>

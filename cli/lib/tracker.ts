@@ -44,6 +44,7 @@ function batchKey<T>(item: ItemRequest<T>, baseParams?: Partial<GenerationParams
 		`fmt:${merged.output_format}`,
 		`ap:${ap}`,
 		`apt:${apt}`,
+		`grp:${item.group ?? "none"}`,
 	]
 	return parts.join("|")
 }
@@ -131,20 +132,23 @@ export async function executeAll<T>(
 				startedAt: 0,
 				batchIndex: batchIdx,
 				batchTotal: totalBatches,
+				group: request.group,
 			}
 		})
 	})
 
 	onInit?.(tracked)
 
-	// Submit all batches
-	const submittedBatches: { batch: Batch<T>; jobId: string }[] = []
+	// Submit and poll batches with concurrency limit
+	const maxConcurrent = options.maxConcurrentBatches ?? Infinity
+	const results: Promise<void>[] = []
+	const executing = new Set<Promise<void>>()
 
 	for (let b = 0; b < batches.length; b++) {
 		const batch = batches[b]!
 
+		// If aborted, mark remaining as cancelled transparently
 		if (signal?.aborted) {
-			// Mark remaining items as cancelled
 			for (const { index } of batch.items) {
 				tracked[index]!.status = "LOCAL_CANCELLED"
 				tracked[index]!.error = new Error("Operation aborted")
@@ -153,49 +157,33 @@ export async function executeAll<T>(
 			}
 			continue
 		}
-		try {
-			const result = await endpoint.run({ input: batch.jobInput })
-			const jobId = result.id
 
-			if (!jobId) throw new RunPodError("No job ID returned from RunPod")
-			activeJobs.add(jobId)
-
-			// Mark as submitted
-			for (const { index } of batch.items) {
-				tracked[index]!.status = "SUBMITTED"
-				tracked[index]!.startedAt = Date.now()
-				onStatusChange?.(tracked[index]!)
-			}
-
-			submittedBatches.push({ batch, jobId })
-
-			const itemLabels = batch.items.map((item) => item.request.label || item.request.text.slice(0, 20)).join(", ")
-			logToFile(`   🚀 Batch ${b + 1}/${totalBatches} → ${jobId} [${itemLabels}]`)
-
-			onBatchSubmit?.(jobId, batch.items.length)
-		} catch (err: unknown) {
-			const error = ensureError(err)
-			const completedAt = Date.now()
-			for (const { index } of batch.items) {
-				const item = tracked[index]!
-				item.status = "FAILED"
-				item.error = error
-				item.completedAt = completedAt
-				item.elapsed = (item.startedAt && item.startedAt > 0) ? (completedAt - item.startedAt) : 0
-				onStatusChange?.(item)
-			}
-			logErrorToFile(`Batch ${b + 1} submit failed`, error.message)
+		// Wait if hitting concurrency limit
+		if (executing.size >= maxConcurrent) {
+			await Promise.race(executing)
 		}
-	}
 
-	// Poll all submitted batches concurrently
-	if (submittedBatches.length > 0) {
-		logToFile(`\n⏳ Polling ${submittedBatches.length} job(s)...`)
-	}
-
-	await Promise.all(
-		submittedBatches.map(async ({ batch, jobId }) => {
+		const processBatch = async () => {
 			try {
+				// Submit
+				const result = await endpoint.run({ input: batch.jobInput })
+				const jobId = result.id
+
+				if (!jobId) throw new RunPodError("No job ID returned from RunPod")
+				activeJobs.add(jobId)
+
+				// Mark as submitted
+				for (const { index } of batch.items) {
+					tracked[index]!.status = "SUBMITTED"
+					tracked[index]!.startedAt = Date.now()
+					onStatusChange?.(tracked[index]!)
+				}
+
+				onBatchSubmit?.(jobId, batch.items.length)
+				const itemLabels = batch.items.map((item) => item.request.label || item.request.text.slice(0, 20)).join(", ")
+				logToFile(`   🚀 Batch ${b + 1}/${totalBatches} → ${jobId} [${itemLabels}]`)
+
+				// Poll
 				const response = await pollJob(endpoint, jobId, TIMEOUT_MS, (status) => {
 					for (const { index } of batch.items) {
 						tracked[index]!.status = status
@@ -214,7 +202,7 @@ export async function executeAll<T>(
 						item.elapsed = (item.startedAt && item.startedAt > 0) ? (completedAt - item.startedAt) : 0
 						onStatusChange?.(item)
 					}
-					return // Skip output processing for cancelled jobs
+					return
 				}
 
 				const output = response.output
@@ -233,10 +221,10 @@ export async function executeAll<T>(
 					const b64 = output.audio[j]
 
 					if (!b64 || typeof b64 !== "string") {
-						item.status = "FAILED" // Changed from "failed" to "FAILED"
+						item.status = "FAILED"
 						item.error = new RunPodError(`Empty audio at index ${j}`)
 					} else {
-						item.status = "COMPLETED" // Changed from "completed" to "COMPLETED"
+						item.status = "COMPLETED"
 						item.audio = Buffer.from(b64, "base64")
 						item.format = output.format || "wav"
 					}
@@ -247,11 +235,11 @@ export async function executeAll<T>(
 					if (onProgress) await onProgress(item)
 					onStatusChange?.(item)
 				}
+
 			} catch (err: unknown) {
-				activeJobs.delete(jobId)
+				// Handle submit/poll errors
 				const error = ensureError(err)
 				const completedAt = Date.now()
-
 				for (const { index } of batch.items) {
 					const item = tracked[index]!
 					item.status = "FAILED"
@@ -261,9 +249,19 @@ export async function executeAll<T>(
 					if (onProgress) await onProgress(item)
 					onStatusChange?.(item)
 				}
+				logErrorToFile(`Batch ${b + 1} failed`, error.message)
 			}
+		}
+
+		const p = processBatch().then(() => {
+			executing.delete(p)
 		})
-	)
+		executing.add(p)
+		results.push(p)
+	}
+
+	// Wait for remaining
+	await Promise.all(results)
 
 	const completed = tracked.filter((item) => item.status === "COMPLETED").length
 	const failed = tracked.filter((item) => item.status === "FAILED").length

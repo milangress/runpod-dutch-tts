@@ -70,6 +70,9 @@ export interface ItemRequest<T = void> {
 	audioPrompt?: string
 	/** Voice cloning: transcript of the audio prompt */
 	audioPromptTranscript?: string
+
+	/** Grouping identifier (e.g. Story filename) */
+	group?: string
 }
 
 /** What the user gets back — one per text prompt, fully resolved */
@@ -89,6 +92,7 @@ export interface TrackedItem<T = void> {
 	batchTotal?: number
 	completedAt?: number
 	startedAt?: number
+	group?: string
 }
 
 export type LocalJobStatus = "PENDING" | "SUBMITTED" | "LOCAL_CANCELLED"
@@ -101,6 +105,9 @@ export interface RunAllOptions<T = void> {
 
 	/** How many texts to send per RunPod job (default: 3) */
 	batchSize?: number
+
+	/** Max concurrent batches to run (default: Infinity) */
+	maxConcurrentBatches?: number
 
 	/** Called when an individual item completes (success or failure) */
 	onProgress?: (item: TrackedItem<T>) => void | Promise<void>
