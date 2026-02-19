@@ -5,6 +5,7 @@ dist/
 build/
 .env
 *.wav
+!voices/*.wav
 *.mp3
 *.flac
 /models/
